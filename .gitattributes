@@ -1,0 +1,7 @@
+# Depo her platformda aynı baytlarla çıkar (headshell D-070'in aynısı).
+#
+# İndeks her dosyanın sha256'sını taşıyor ve istemci indirdiğini bununla
+# doğruluyor. Windows'ta `core.autocrlf=true` bir dosyayı CRLF'ye çevirirse
+# `headshell plugin index` o makinede başka bir karma hesaplar: indeks
+# yayımlanan baytlarla çelişir ve kurulum "karma tutmuyor" der.
+* text=auto eol=lf

@@ -1,0 +1,92 @@
+# Katalog deposunun kapısı (headshell D-071).
+#
+# Üç denetim; üçü de kullanıcının kurulumda göreceği bir kırılmayı önceden
+# yakalıyor:
+#
+# 1. İndeks güncel mi — `headshell plugin index --check`. Her manifest
+#    uygulamanın kurulumda uyguladığı doğrulamadan geçer ve dosyaların
+#    karması indeksteki karmayla karşılaştırılır. Eskimiş bir indeks
+#    kurulumda "karma tutmuyor" demektir.
+# 2. Her sürümün etiketi var mı, dosyaları o etiketle aynı mı. İndeks
+#    dosyaları `<ad>-<sürüm>` etiketinden gösteriyor: etiket yoksa kurulum
+#    404 alır, sürüm artmadan dosya değiştiyse karma tutmaz.
+# 3. Her eklenti yayımlanan katalogdan gerçekten kuruluyor mu — kullanıcının
+#    yolu, `raw.githubusercontent.com` üzerinden, bu commit'in indeksiyle.
+#
+# 2 ve 3 yalnızca `main`'e gönderimde koşar: bir PR'daki yeni sürümün
+# etiketini birleştiren bakımcı atar.
+#
+# headshell kaynaktan derleniyor, çünkü `plugin index` henüz yayımlanmış bir
+# sürümde değil. Girdiğinde yayın ikilisini indirmek yeter.
+name: katalog
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  katalog:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Etiketler 2. denetim için.
+          fetch-depth: 0
+
+      # cpal ALSA'ya bağlanıyor; CLI onsuz derlenmez.
+      - name: Sistem bağımlılıkları
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libasound2-dev
+
+      - name: Rust araç zinciri
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: headshell'i derle
+        run: |
+          cargo install --locked --git https://github.com/headshell/headshell headshell-cli
+          headshell --version
+
+      - name: 1 — indeks güncel mi
+        run: headshell --data-dir "$RUNNER_TEMP/veri" plugin index . --check
+
+      - name: 2 — her sürümün etiketi var mı, dosyaları aynı mı
+        if: github.event_name == 'push'
+        run: |
+          set -eu
+          ok=1
+          for manifest in */plugin.json; do
+            name=$(jq -r .name "$manifest")
+            version=$(jq -r .version "$manifest")
+            main=$(jq -r .main "$manifest" | sed 's|^\./||')
+            tag="$name-$version"
+            if ! git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+              echo "::error::$tag etiketi yok ama indeks onu gösteriyor — git tag $tag && git push origin $tag"
+              ok=0
+              continue
+            fi
+            if ! git diff --quiet "$tag" HEAD -- "$name/plugin.json" "$name/$main"; then
+              echo "::error::$name dosyaları $tag etiketinden farklı ama sürüm artmamış — yeni bir sürüm yayımla"
+              ok=0
+            fi
+          done
+          [ "$ok" = 1 ]
+
+      - name: 3 — katalogdan kurulabiliyor mu
+        if: github.event_name == 'push'
+        env:
+          HEADSHELL_PLUGIN_INDEX: https://raw.githubusercontent.com/headshell/plugins/${{ github.sha }}/index.json
+        run: |
+          set -eu
+          for manifest in */plugin.json; do
+            name=$(jq -r .name "$manifest")
+            headshell --data-dir "$RUNNER_TEMP/kurulum" plugin install "$name"
+          done
