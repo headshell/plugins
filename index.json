@@ -9,7 +9,7 @@
           "search",
           "stream"
         ],
-        "description": "SoundCloud'da arar ve çalar. client_id'yi sırdan alır, yoksa kendisi keşfeder. `*.sndcdn.com`: web istemcisinin JS varlıkları (a-v2) ve ses akışı (cf-media) bu alan adının altında.",
+        "description": "Searches and plays SoundCloud. Takes the client_id from the secret store, and otherwise discovers it itself. `*.sndcdn.com`: the web client's JS assets (a-v2) and the audio stream (cf-media) are under this domain.",
         "display_name": "SoundCloud",
         "main": "main.js",
         "name": "soundcloud",
@@ -20,18 +20,18 @@
             "*.sndcdn.com"
           ]
         },
-        "version": "0.2.0"
+        "version": "0.2.1"
       },
       "files": [
         {
           "path": "plugin.json",
-          "url": "https://raw.githubusercontent.com/headshell/plugins/refs/tags/soundcloud-0.2.0/soundcloud/plugin.json",
-          "sha256": "6a82c32425ef5a2693b0c9a24e62e39e6c973cb1cb589c85fd5b7088491bf3a8"
+          "url": "https://raw.githubusercontent.com/headshell/plugins/refs/tags/soundcloud-0.2.1/soundcloud/plugin.json",
+          "sha256": "c9fcc403a926271997d84151c1e72f0ecdd961a93e59bcf6b0b5aed931b6dabd"
         },
         {
           "path": "main.js",
-          "url": "https://raw.githubusercontent.com/headshell/plugins/refs/tags/soundcloud-0.2.0/soundcloud/main.js",
-          "sha256": "47d1c560bcb5b609162926ae44eb47cc09a05255d558f10bdbdd64aaf8c2b2c7"
+          "url": "https://raw.githubusercontent.com/headshell/plugins/refs/tags/soundcloud-0.2.1/soundcloud/main.js",
+          "sha256": "7e5c8a565946d3a6143c8caf16fd7cf9c65704b59eb1e36dc3092a4fb73622ab"
         }
       ]
     },
@@ -42,7 +42,7 @@
           "search",
           "stream"
         ],
-        "description": "YouTube Music'te arar (InnerTube) ve yt-dlp ile çözdüğü m4a akışını çalar. yt-dlp'yi motor kurar: bu platformun kendi kendine yeten ikilisini indirir ve karmasını doğrular (D-069); sistemde Python gerekmez. `cookies` sırrı verilirse yt-dlp'ye çerez dosyası olarak geçirilir — YouTube veri merkezi adreslerine bot duvarı çıkarıyor (D-061). DİKKAT — yt-dlp motorun hapsettiği bir betik değil, ayrı bir programdır: ağ trafiği bu eklentinin izin listesiyle sınırlanmaz. Linux armv7 (`linux-arm`) için tek dosyalık yayın yok, 32 bit Linux için hiç yok.",
+        "description": "Searches YouTube Music (InnerTube) and plays the m4a stream it resolves with yt-dlp. The engine installs yt-dlp: it downloads this platform's self-contained binary and verifies its hash (D-069); no Python is needed on the system. If a `cookies` secret is given, it's passed to yt-dlp as a cookie file — YouTube puts up a bot wall for data centre addresses (D-061). NOTE — yt-dlp isn't a script the engine jails but a separate program: its network traffic isn't limited by this plugin's permission list. There's no single-file release for Linux armv7 (`linux-arm`), and none at all for 32-bit Linux.",
         "display_name": "YouTube Music",
         "main": "main.js",
         "name": "ytmusic",
@@ -96,18 +96,18 @@
             "version": "2026.08.19"
           }
         ],
-        "version": "0.4.0"
+        "version": "0.4.1"
       },
       "files": [
         {
           "path": "plugin.json",
-          "url": "https://raw.githubusercontent.com/headshell/plugins/refs/tags/ytmusic-0.4.0/ytmusic/plugin.json",
-          "sha256": "06fbea1fdc1398cbf19d124d135400dd592d36d67c0143c57a3fb059dbc83249"
+          "url": "https://raw.githubusercontent.com/headshell/plugins/refs/tags/ytmusic-0.4.1/ytmusic/plugin.json",
+          "sha256": "4e97469f3484f331cc693c7c2e282e05178efce6b4cd9d05f0dd02f6cb8114fe"
         },
         {
           "path": "main.js",
-          "url": "https://raw.githubusercontent.com/headshell/plugins/refs/tags/ytmusic-0.4.0/ytmusic/main.js",
-          "sha256": "c881d0917d10ce7c346aaa270cbdb3dd07d810f02f780e6e59ba81ab2308345c"
+          "url": "https://raw.githubusercontent.com/headshell/plugins/refs/tags/ytmusic-0.4.1/ytmusic/main.js",
+          "sha256": "d841b9a6d0786275ae68be5404f94d5531edb75c84fd0f32a78847e785cd8e0e"
         }
       ]
     }

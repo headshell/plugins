@@ -1,63 +1,66 @@
-// YouTube Music sağlayıcı eklentisi (api 2, D-048 → D-069).
+// The YouTube Music provider plugin (api 2, D-048 → D-069).
 //
-// SoundCloud eklentisiyle aynı kurallar: ses röle edilmez (K3), DRM aşan
-// hiçbir şey yok (D-026). D-069'da Python'dan JS'e taşındı ve artık
-// kullanıcının makinesinde **hiçbir şey kurulu olması gerekmiyor**: arama
-// motorun HTTP kapısından, akış motorun kurduğu yt-dlp'den geçiyor — ve
-// motor yt-dlp'nin bu platform için derlenmiş, kendi Python'unu içinde
-// taşıyan ikilisini indiriyor.
+// The same rules as the SoundCloud plugin: audio is never relayed (K3), and
+// nothing circumvents DRM (D-026). It moved from Python to JS in D-069, and now
+// **nothing has to be installed** on the user's machine: search goes through the
+// engine's HTTP gate, the stream through the yt-dlp the engine installs — and the
+// engine downloads yt-dlp's binary built for this platform, which carries its
+// own Python inside it.
 //
-// ## İş bölümü: arama InnerTube'dan, akış yt-dlp'den
+// ## The division of labour: search from InnerTube, the stream from yt-dlp
 //
-// İkisi de ölçülerek seçildi (D-048):
+// Both were chosen by measuring (D-048):
 //
-// - **Arama** YouTube Music'in kendi InnerTube ucuna gidiyor. yt-dlp'nin
-//   arama çıktısı yalnızca `title` + `id` veriyor — sanatçı yok, süre yok — ve
-//   K6'nın bulanık eşleşme halkası bunlar olmadan çalışmaz.
-// - **Akış** yt-dlp'ye gidiyor. YouTube'un imza/nsig işi bu projenin işi
-//   değil; bozulduğunda yt-dlp güncellenir, biz değil.
+// - **Search** goes to YouTube Music's own InnerTube endpoint. yt-dlp's search
+//   output gives only `title` + `id` — no artist, no duration — and K6's fuzzy
+//   match link doesn't work without them.
+// - **The stream** goes to yt-dlp. YouTube's signature/nsig work isn't this
+//   project's job; when it breaks, yt-dlp gets updated, not us.
 //
-// ## İki tuzak, ikisi de ölçülmüş
+// ## Two traps, both measured
 //
-// 1. **`bestaudio` çalınamaz.** Çekirdeğin symphonia'sında opus çözücüsü ve
-//    webm kabı yok; `bestaudio` opus/webm seçer. Biçim m4a'ya (AAC-LC) sabitli.
-// 2. **Düz GET kısıtlanıyor.** Aynı adres düz istekte 32 KB/s, `Range:
-//    bytes=0-` başlığıyla 8 MB/s veriyor — 250 kat. Başlık akış kaynağıyla
-//    birlikte çekirdeğe geçiriliyor.
+// 1. **`bestaudio` can't be played.** The core's symphonia has no opus decoder
+//    and no webm container; `bestaudio` picks opus/webm. The format is pinned to
+//    m4a (AAC-LC).
+// 2. **A plain GET is throttled.** The same address gives 32 KB/s on a plain
+//    request and 8 MB/s with a `Range: bytes=0-` header — 250 times. The header
+//    is passed to the core together with the stream source.
 
 const INNERTUBE_URL = "https://music.youtube.com/youtubei/v1/search";
 const WATCH_URL = "https://music.youtube.com/watch?v=";
 
-// InnerTube istemci bağlamı. Anahtar gerekmiyor (ölçüldü, D-048); istemci adı
-// WEB_REMIX çünkü aradığımız şey YouTube Music kataloğu, YouTube'un tamamı değil.
+// The InnerTube client context. No key needed (measured, D-048); the client name
+// is WEB_REMIX because what we're searching is the YouTube Music catalog, not all
+// of YouTube.
 const INNERTUBE_CLIENT = {
   clientName: "WEB_REMIX",
   clientVersion: "1.20240101.01.00",
   hl: "en",
   gl: "US",
 };
-// Arama süzgeci: yalnızca şarkılar. Süzgeçsiz sorgu kanal sayfası, çalma
-// listesi ve "10 saatlik loop" videosu da döndürüyor.
+// The search filter: songs only. An unfiltered query also returns channel pages,
+// playlists and "10-hour loop" videos.
 const SONGS_FILTER = "EgWKAQIIAWoKEAoQCRADEAQQBQ==";
 
 const BROWSER_UA =
   "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36";
 
-// Çözebildiğimiz en iyi ses. Sıra önemli: 140 (AAC-LC ~130 kbps) yoksa 139
-// (~49 kbps) alınır; ikisi de yoksa hata döner — sessizce opus seçilmez.
+// The best audio we can decode. The order matters: if there's no 140 (AAC-LC
+// ~130 kbps), 139 (~49 kbps) is taken; if there's neither, an error is returned —
+// opus is never picked silently.
 const AUDIO_FORMAT = "140/139/bestaudio[ext=m4a]";
 
-// Çağrının bütçesi 20 sn. yt-dlp imza çözerken 8-10 sn harcayabiliyor, ve
-// kendi kendine yeten ikili her açılışta kendini geçici bir dizine açıyor;
-// bütçe yine de çağrınınkinin altında kalmalı ki hata *bizden* çıksın ve
-// sebebini söyleyebilelim (K9).
+// The call's budget is 20 s. yt-dlp can spend 8-10 s solving signatures, and the
+// self-contained binary unpacks itself into a temporary directory on every start;
+// the budget must still stay below the call's, so the error comes *from us* and
+// we can say why (K9).
 const YTDLP_TIMEOUT_MS = 16000;
 
 const DURATION_PATTERN = /^(?:(\d+):)?(\d{1,2}):(\d{2})$/;
 
 // --- InnerTube -------------------------------------------------------------------
 
-/** YouTube Music'in şarkı aramasını çağırır ve ham satırları döndürür. */
+/** Calls YouTube Music's song search and returns the raw rows. */
 function innertubeSearch(text, limit) {
   const payload = JSON.stringify({
     context: { client: { ...INNERTUBE_CLIENT } },
@@ -72,33 +75,34 @@ function innertubeSearch(text, limit) {
       Origin: "https://music.youtube.com",
     });
   } catch (err) {
-    throw new Error(`YouTube Music'e ulaşılamadı: ${err.message}`);
+    throw new Error(`YouTube Music could not be reached: ${err.message}`);
   }
   if (!res.ok) {
     throw new Error(
-      `YouTube Music araması ${res.status} döndürdü; InnerTube yüzeyi değişmiş olabilir`,
+      `the YouTube Music search returned ${res.status}; the InnerTube surface may have changed`,
     );
   }
   let document;
   try {
     document = JSON.parse(res.body);
   } catch (err) {
-    throw new Error(`YouTube Music JSON olmayan bir cevap verdi: ${err.message}`);
+    throw new Error(`YouTube Music gave an answer that isn't JSON: ${err.message}`);
   }
   return collectSongRows(document).slice(0, limit);
 }
 
 /**
- * Cevabın içinden şarkı satırlarını toplar.
+ * Collects the song rows from inside the response.
  *
- * InnerTube'un ağacı derin ve haber vermeden değişiyor; bu yüzden yolu adım
- * adım yürümek yerine `musicResponsiveListItemRenderer` anahtarını
- * **arıyoruz.** Yapı bir kat değişirse arama hâlâ çalışır; anahtarın kendisi
- * kaybolursa sıfır satır döner ve çağıran bunu "yüzey değişti" diye raporlar.
+ * InnerTube's tree is deep and changes without warning; so instead of walking
+ * the path step by step, we **search for** the `musicResponsiveListItemRenderer`
+ * key. If the structure changes by a level, the search still works; if the key
+ * itself disappears, zero rows come back and the caller reports it as "the
+ * surface changed".
  *
- * **Sıra korunur.** YouTube'un verdiği sıra alaka sırasıdır ve `limit` onu
- * baştan kesiyor. Çocuklar yığına **ters** basılıyor ki `pop()` onları belge
- * sırasında geri versin.
+ * **The order is kept.** The order YouTube gives is the relevance order, and
+ * `limit` cuts it from the start. The children are pushed onto the stack **in
+ * reverse**, so `pop()` gives them back in document order.
  */
 function collectSongRows(document) {
   const rows = [];
@@ -120,13 +124,13 @@ function collectSongRows(document) {
   return rows;
 }
 
-/** `flexColumns[index]` içindeki metin parçaları. */
+/** The text runs inside `flexColumns[index]`. */
 function columnRuns(row, index) {
   const column = row.flexColumns?.[index]?.musicResponsiveListItemFlexColumnRenderer;
   return column?.text?.runs ?? [];
 }
 
-/** Satırın `videoId`'si. İki yerde durabiliyor; ikisine de bakıyoruz. */
+/** The row's `videoId`. It can sit in two places; we look at both. */
 function videoId(row) {
   const play =
     row.overlay?.musicItemThumbnailOverlayRenderer?.content?.musicPlayButtonRenderer;
@@ -139,7 +143,7 @@ function videoId(row) {
   return null;
 }
 
-/** `4:11` ya da `1:02:30` → milisaniye. Tanımadıysa `null`. */
+/** `4:11` or `1:02:30` → milliseconds. `null` if not recognised. */
 function parseDurationMs(text) {
   const matched = DURATION_PATTERN.exec(text.trim());
   if (!matched) return null;
@@ -148,11 +152,11 @@ function parseDurationMs(text) {
 }
 
 /**
- * İkinci sütunu ` • ` ayırıcılarına göre gruplara böler.
+ * Splits the second column into groups by the ` • ` separators.
  *
- * Gözlenen biçim: `sanatçı [• albüm] • süre`. Albüm her satırda yok, ve
- * sanatçı birden çok parça olabiliyor (`vagabond`, `,`, `shilou.`, `&`,
- * `vibe`). Bu yüzden ayırıcıyı sabit bir konum değil, metnin kendisi belirliyor.
+ * The observed form: `artist [• album] • duration`. Not every row has an album,
+ * and the artist can be several runs (`vagabond`, `,`, `shilou.`, `&`, `vibe`).
+ * That's why the text itself, not a fixed position, decides the separator.
  */
 function splitMetadataRuns(runs) {
   const groups = [[]];
@@ -165,8 +169,8 @@ function splitMetadataRuns(runs) {
 }
 
 /**
- * Bir InnerTube satırını sözleşmenin parça biçimine çevirir.
- * Çeviremediğinde `null` döner — çağıran bunları **sayıp raporluyor** (K9).
+ * Turns an InnerTube row into the contract's track shape.
+ * Returns `null` when it can't — the caller **counts and reports** those (K9).
  */
 function rowToTrack(row) {
   const id = videoId(row);
@@ -185,8 +189,8 @@ function rowToTrack(row) {
   }
   const artist = groups[0] ?? "";
   const album = groups[1] ?? "";
-  // Sanatçısız bir satır bulanık eşleşmeye giremez (K6). Düşürüyoruz ama
-  // sayılıyor — "Bilinmeyen sanatçı" diye uydurmaktan iyidir.
+  // A row without an artist can't enter fuzzy matching (K6). We drop it, but it
+  // gets counted — better than making up an "Unknown artist".
   if (!artist) return null;
 
   const track = { id, artist, title, duration_ms: durationMs ?? 0 };
@@ -197,59 +201,62 @@ function rowToTrack(row) {
 // --- yt-dlp ------------------------------------------------------------------
 
 /**
- * yt-dlp'yi motor üzerinden çalıştırır.
+ * Runs yt-dlp through the engine.
  *
- * Eklenti yt-dlp'yi **aramaz, kurmaz, güncellemez** (D-049, D-055): hangi
- * sürüm, hangi platform, nereden — manifestin `requires`'ı söylüyor, motor
- * kuruyor. Kurulu değilse motorun kendi hatası ne yapılacağını söylüyor.
+ * The plugin **doesn't look for, install or update** yt-dlp (D-049, D-055):
+ * which version, which platform, from where — the manifest's `requires` says,
+ * and the engine installs it. If it isn't installed, the engine's own error says
+ * what to do.
  */
 function ytdlp(args) {
   return host.tools.run("yt-dlp", args, { timeoutMs: YTDLP_TIMEOUT_MS });
 }
 
-/** Tek bir parçanın ses biçimini yt-dlp ile çözer. */
+/** Resolves the audio format of a single track with yt-dlp. */
 function ytdlpJson(video) {
   const args = ["--no-warnings", "--no-playlist", "-f", AUDIO_FORMAT, "-J"];
-  // YouTube veri merkezi adreslerine bot duvarı çıkarıyor (D-061) ve yt-dlp
-  // çerezi yalnızca dosyadan okuyor. Motor sırrı `0600` bir geçici dosyaya
-  // yazıyor ve motor kapanınca siliyor; sır yoksa `null` ve yt-dlp çerezsiz
-  // çalışıyor — çerez bir gereklilik değil, bir kaçış yolu.
+  // YouTube puts up a bot wall for data centre addresses (D-061), and yt-dlp
+  // reads cookies only from a file. The engine writes the secret to a `0600`
+  // temporary file and deletes it when the engine shuts down; if there's no
+  // secret, it's `null` and yt-dlp runs without cookies — cookies aren't a
+  // requirement but a way out.
   const cookies = host.secrets.file("cookies");
   if (cookies !== null) args.push("--cookies", cookies);
   args.push(WATCH_URL + video);
 
   const run = ytdlp(args);
   if (run.code !== 0) {
-    // yt-dlp'nin kendi mesajını olduğu gibi geçiriyoruz (D-048): "bir şey
-    // olmadı" yerine "Sign in to confirm you're not a bot" görünsün.
+    // We pass yt-dlp's own message on as it is (D-048): let "Sign in to confirm
+    // you're not a bot" show instead of "something went wrong".
     const lines = run.stderr.trim().split("\n").filter((line) => line.trim() !== "");
-    throw new Error(`yt-dlp: ${lines[lines.length - 1] ?? `çıkış kodu ${run.code}`}`);
+    throw new Error(`yt-dlp: ${lines[lines.length - 1] ?? `exit code ${run.code}`}`);
   }
   try {
     return JSON.parse(run.stdout);
   } catch (err) {
-    throw new Error(`yt-dlp JSON olmayan bir cevap verdi: ${err.message}`);
+    throw new Error(`yt-dlp gave an answer that isn't JSON: ${err.message}`);
   }
 }
 
 /**
- * Seçilen biçimi döndürür.
+ * Returns the chosen format.
  *
- * `-f` verildiğinde yt-dlp adresi tepe düzeyde `url` olarak veriyor; birden çok
- * akış birleştirilmişse `requested_formats` altında. İkisine de bakıp sessiz
- * bir video akışına düşmediğimizi doğruluyoruz. Eleme `acodec === "none"`
- * üzerinden: alanı hiç göndermeyen bir sürümde geçerli sesi reddetmemek için.
+ * When `-f` is given, yt-dlp gives the address at the top level as `url`; if
+ * several streams are merged, under `requested_formats`. We look at both and
+ * make sure we didn't fall onto a silent video stream. The filter goes through
+ * `acodec === "none"`: so as not to reject valid audio in a version that doesn't
+ * send the field at all.
  */
 function pickAudio(document) {
   const candidates = document.requested_formats ?? [document];
   return candidates.find((c) => c.acodec !== "none" && c.url) ?? null;
 }
 
-// --- sözleşme --------------------------------------------------------------------
+// --- the contract ------------------------------------------------------------------
 
 /**
- * İki bağımsız şeyi ayrı ayrı yoklar: arama ucu ve yt-dlp. Tek bir
- * "çalışmıyor" cevabı hangisinin bozulduğunu gizlerdi (K9).
+ * Probes two independent things separately: the search endpoint and yt-dlp. A
+ * single "doesn't work" answer would hide which of them broke (K9).
  */
 export function health() {
   const notes = [];
@@ -257,26 +264,27 @@ export function health() {
 
   try {
     const rows = innertubeSearch("a", 1);
-    notes.push(`InnerTube araması ${rows.length} satır döndürdü`);
+    notes.push(`the InnerTube search returned ${rows.length} rows`);
   } catch (err) {
     reachable = false;
-    notes.push(`arama: ${err.message}`);
+    notes.push(`search: ${err.message}`);
   }
 
   try {
     const run = ytdlp(["--version"]);
     if (run.code === 0) {
-      notes.push(`yt-dlp ${run.stdout.trim()} (motor, ${host.platform})`);
+      notes.push(`yt-dlp ${run.stdout.trim()} (engine, ${host.platform})`);
     } else {
       reachable = false;
-      notes.push(`yt-dlp --version çıkış kodu ${run.code}`);
+      notes.push(`yt-dlp --version exit code ${run.code}`);
     }
   } catch (err) {
     reachable = false;
     notes.push(`yt-dlp: ${err.message}`);
   }
 
-  // Katalog boyutu sorguya göre değişir; "bilmiyorum" yanlış bir sayıdan iyidir.
+  // The catalog size changes with the query; "I don't know" is better than a
+  // wrong number.
   return { reachable, track_count: null, detail: notes.join("; ") };
 }
 
@@ -287,9 +295,9 @@ export function search(text, limit) {
 
   const rows = innertubeSearch(q, size);
   if (rows.length === 0) {
-    // Sıfır satır iki şey olabilir: sonuç yok ya da yüzey değişti.
-    // Ayırmıyoruz ama sessiz de kalmıyoruz.
-    host.log.info(`'${q}' için şarkı satırı gelmedi`);
+    // Zero rows can be two things: no results, or the surface changed. We don't
+    // tell them apart, but we don't stay silent either.
+    host.log.info(`no song rows came for '${q}'`);
     return [];
   }
 
@@ -300,30 +308,30 @@ export function search(text, limit) {
     if (track === null) skipped += 1;
     else tracks.push(track);
   }
-  // K9: düşürülen kayıt sayılır ve raporlanır, sessizce yutulmaz.
+  // K9: a dropped record is counted and reported, not silently swallowed.
   if (skipped > 0) {
-    host.log.warn(`aramada ${skipped} satır çevrilemedi (kimlik/sanatçı/başlık eksik)`);
+    host.log.warn(`${skipped} search rows could not be converted (missing ID/artist/title)`);
   }
   return tracks;
 }
 
 export function resolve_source(id) {
   const video = String(id ?? "").trim();
-  if (video === "") throw new Error("parça kimliği boş");
+  if (video === "") throw new Error("the track ID is empty");
 
   const chosen = pickAudio(ytdlpJson(video));
   if (chosen === null) {
-    // "Çalamıyorum" ile "yok" farklı tanılardır (K9).
+    // "I can't play it" and "it doesn't exist" are different diagnoses (K9).
     throw new Error(
-      `yt-dlp bu parça için çözebildiğimiz bir ses biçimi vermedi (istenen: ${AUDIO_FORMAT})`,
+      `yt-dlp gave no audio format we can decode for this track (asked for: ${AUDIO_FORMAT})`,
     );
   }
   return {
     kind: "http_stream",
     url: chosen.url,
-    // Ölçüldü (D-048): bu başlık olmadan aynı adres 32 KB/s, onunla 8 MB/s
-    // veriyor. Şifre çözme değil — sunucunun 206 ile cevapladığı standart
-    // bir menzil isteği.
+    // Measured (D-048): without this header the same address gives 32 KB/s, with
+    // it 8 MB/s. Not decryption — a standard range request the server answers
+    // with 206.
     headers: [{ name: "Range", value: "bytes=0-" }],
   };
 }

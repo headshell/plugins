@@ -1,7 +1,8 @@
-# Depo her platformda aynı baytlarla çıkar (headshell D-070'in aynısı).
+# The repository checks out with the same bytes on every platform (the same as
+# headshell D-070).
 #
-# İndeks her dosyanın sha256'sını taşıyor ve istemci indirdiğini bununla
-# doğruluyor. Windows'ta `core.autocrlf=true` bir dosyayı CRLF'ye çevirirse
-# `headshell plugin index` o makinede başka bir karma hesaplar: indeks
-# yayımlanan baytlarla çelişir ve kurulum "karma tutmuyor" der.
+# The index carries every file's sha256, and the client verifies what it
+# downloads against it. If `core.autocrlf=true` on Windows turns a file into
+# CRLF, `headshell plugin index` computes a different hash on that machine: the
+# index contradicts the published bytes, and installation says "hash mismatch".
 * text=auto eol=lf

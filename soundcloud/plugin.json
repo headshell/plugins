@@ -1,12 +1,12 @@
 {
   "name": "soundcloud",
   "display_name": "SoundCloud",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "api": 2,
   "main": "main.js",
   "capabilities": ["search", "stream"],
   "permissions": {
     "net": ["soundcloud.com", "api-v2.soundcloud.com", "*.sndcdn.com"]
   },
-  "description": "SoundCloud'da arar ve çalar. client_id'yi sırdan alır, yoksa kendisi keşfeder. `*.sndcdn.com`: web istemcisinin JS varlıkları (a-v2) ve ses akışı (cf-media) bu alan adının altında."
+  "description": "Searches and plays SoundCloud. Takes the client_id from the secret store, and otherwise discovers it itself. `*.sndcdn.com`: the web client's JS assets (a-v2) and the audio stream (cf-media) are under this domain."
 }

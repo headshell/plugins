@@ -1,35 +1,35 @@
 # SoundCloud
 
-SoundCloud'da arar ve çalar. Hiçbir şey kurman gerekmez.
+Searches and plays SoundCloud. You don't need to install anything.
 
 ```bash
 headshell plugin install soundcloud
 headshell plugin approve soundcloud
-headshell provider test soundcloud     # "kullanılabilir" demeli
+headshell provider test soundcloud     # should say "available"
 headshell play "nujabes aruarian dance"
 ```
 
-`client_id` **istenmez**: eklenti SoundCloud'un web istemcisinden kendisi
-keşfeder ve `host.storage`'ta önbellekler. Kendi anahtarın varsa o
-kullanılır ve keşfe hiç gidilmez:
+A `client_id` **isn't asked for**: the plugin discovers one itself from
+SoundCloud's web client and caches it in `host.storage`. If you have your own key,
+it's used, and discovery is never attempted:
 
 ```bash
 headshell secret set plugin:soundcloud client_id
 ```
 
-`headshell provider test soundcloud` hangi kaynağın kullanıldığını yazar
-(`sır` / `önbellek` / `keşif`) — yanlış anahtarla çalışan bir kurulum
-sessizce doğru görünmesin diye (headshell D-043).
+`headshell provider test soundcloud` writes which source was used
+(`secret` / `cache` / `discovery`) — so that an install working with a wrong key
+doesn't silently look right (headshell D-043).
 
-**Bilinen sınırlar**, ikisi de kasıtlı:
+**Known limits**, both deliberate:
 
-- **Yalnızca `progressive` (düz HTTP MP3).** Ölçüldü: parçaların %99'unda
-  var. Kalan %1 yalnızca HLS sunuyor ve açık bir hata alır.
-- **`[önizleme]` etiketli parçalar 30 saniyedir.** SoundCloud'un `SNIP`
-  politikası; tam parça abonelik istiyor.
+- **`progressive` (plain HTTP MP3) only.** Measured: 99% of the tracks have it. The
+  remaining 1% offer only HLS and get an explicit error.
+- **Tracks labelled `[preview]` are 30 seconds long.** SoundCloud's `SNIP` policy;
+  the full track needs a subscription.
 
-Keşif belgelenmemiş bir yola dayanıyor ve **haber vermeden bozulabilir**.
-Bozulursa eklenti sana kendi `client_id`'ni vermeni söyler.
+Discovery relies on an undocumented path and **can break without warning**. If it
+breaks, the plugin tells you to give your own `client_id`.
 
-İzinler: `soundcloud.com`, `api-v2.soundcloud.com`, `*.sndcdn.com` (web
-istemcisinin JS varlıkları ve ses akışı bu alan adının altında).
+Permissions: `soundcloud.com`, `api-v2.soundcloud.com`, `*.sndcdn.com` (the web
+client's JS assets and the audio stream are under this domain).

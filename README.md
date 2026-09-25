@@ -1,96 +1,101 @@
-# headshell eklentileri
+# headshell plugins
 
-[headshell](https://github.com/headshell/headshell)'in eklenti kataloğu.
-Uygulama eklenti listesini bu deponun kökündeki [`index.json`](index.json)'dan
-okur ve eklentileri buradan kurup günceller (D-071).
+The plugin catalog of [headshell](https://github.com/headshell/headshell). The
+app reads its plugin list from the [`index.json`](index.json) at the root of this
+repository, and installs and updates plugins from here (D-071).
 
-| Eklenti | Ne yapar | Gerektirdiği |
+<sub><b>English</b> · <a href="README.tr.md">Türkçe</a></sub>
+
+| Plugin | What it does | What it needs |
 |---|---|---|
-| [`soundcloud`](soundcloud/) | SoundCloud'da arar ve çalar | hiçbir şey |
-| [`ytmusic`](ytmusic/) | YouTube Music'te arar, yt-dlp ile çalar | yt-dlp (motor indirir, sha256 doğrular) |
+| [`soundcloud`](soundcloud/) | Searches and plays SoundCloud | nothing |
+| [`ytmusic`](ytmusic/) | Searches YouTube Music, plays with yt-dlp | yt-dlp (the engine downloads it and verifies its sha256) |
 
-Eklentiler JavaScript'le yazılır ve headshell'in içine gömülü QuickJS
-motorunda koşar: Python, Node ya da başka bir çalışma zamanı gerekmez. Her
-eklenti bağlanacağı adresleri beyan eder ve beyan **zorlanır**.
+Plugins are written in JavaScript and run in the QuickJS engine embedded in
+headshell: no Python, Node or other runtime is needed. Every plugin declares the
+addresses it will connect to, and the declaration **is enforced**.
 
-## Kurmak
+## Installing
 
 ```bash
-headshell plugin catalog              # ne var, ne kurulu, ne güncellenebilir
-headshell plugin install soundcloud   # indirir, her dosyanın sha256'sını doğrular
-headshell plugin approve soundcloud   # izinleri onayla — kurulan eklenti onay bekler
-headshell plugin update               # katalogdan kurulanları güncelle
-headshell plugin remove soundcloud    # kaldır, onayı unut
+headshell plugin catalog              # what's available, what's installed, what can be updated
+headshell plugin install soundcloud   # downloads it and verifies every file's sha256
+headshell plugin approve soundcloud   # approve its permissions — an installed plugin waits for approval
+headshell plugin update               # updates the ones installed from the catalog
+headshell plugin remove soundcloud    # removes it and forgets the approval
 ```
 
-Masaüstünde: **eklentiler → katalog → kataloğu getir**.
+On the desktop: **plugins → catalog → fetch the catalog**.
 
-Katalog yalnızca bu komutlarla okunur; uygulama açılırken ya da arka planda
-ağa çıkmaz. Başka bir katalog (bir çatal, bir ayna) için
-`HEADSHELL_PLUGIN_INDEX=<adres>`.
+The catalog is read only by these commands; the app doesn't go to the network at
+startup or in the background. For another catalog (a fork, a mirror),
+`HEADSHELL_PLUGIN_INDEX=<address>`.
 
-## Nasıl çalışır
+## How it works
 
-- **Her eklenti bir dizin:** `<ad>/plugin.json` ve betiği. Nasıl yazılacağı
-  ana depoda: [eklenti yazma rehberi](https://github.com/headshell/headshell/blob/master/docs/eklenti-yazma.md).
-- **`index.json` üretilir, elle yazılmaz.** `headshell plugin index .` her
-  manifesti uygulamanın kurulumda uyguladığı doğrulamadan geçirir, dosyaların
-  sha256'sını hesaplar ve indeksi yazar. İndeks manifestin kendisini taşır:
-  katalogda gösterilen izinler, kurulanın izinleridir.
-- **Dosya adresleri sürüm etiketine sabitli:** `<ad>-<sürüm>`, örneğin
-  `soundcloud-0.2.0`. İndeks `main`'de durur ve her zaman güncel listeyi
-  verir; gösterdiği dosyalar hiç değişmez. GitHub'ın ham içerik önbelleği
-  beş dakika tuttuğu için `main`'e sabitli bir adres, yeni bir sürüm
-  yayımlanırken yeni indeksi eski dosyayla eşleştirebilirdi.
-- **İstemci hiçbir şeye körü körüne güvenmez:** her dosyayı indeksteki
-  karmayla doğrular, inen `plugin.json`'u indeksin gösterdiğiyle
-  karşılaştırır; biri tutmazsa diske hiçbir şey yazmaz. Kurulan eklenti
-  kullanıcı onaylayana kadar çalışmaz.
-- **Elle kurulmuş ya da elle değiştirilmiş bir eklentinin üstüne
-  yazılmaz.** Katalogdan kurulan her eklentinin dizininde bir köken kaydı
-  (`origin.json`) durur; güncelleme yalnızca dosyaları o kayıtla aynı olan
-  eklentiye dokunur.
+- **Every plugin is a directory:** `<name>/plugin.json` and its script. How to
+  write one is in the main repository:
+  [the plugin writing guide](https://github.com/headshell/headshell/blob/master/docs/writing-plugins.md).
+- **`index.json` is generated, not written by hand.** `headshell plugin index .`
+  passes every manifest through the validation the app applies on installation,
+  computes the files' sha256 and writes the index. The index carries the manifest
+  itself: the permissions shown in the catalog are the permissions of what gets
+  installed.
+- **File addresses are pinned to the version tag:** `<name>-<version>`, for
+  example `soundcloud-0.2.1`. The index sits on `main` and always gives the current
+  list; the files it points to never change. Since GitHub's raw content cache holds
+  for five minutes, an address pinned to `main` could pair the new index with the
+  old file while a new version was being published.
+- **The client trusts nothing blindly:** it verifies every file against the hash in
+  the index and compares the downloaded `plugin.json` with what the index shows; if
+  either doesn't match, it writes nothing to disk. An installed plugin doesn't run
+  until the user approves it.
+- **It never writes over a plugin installed or changed by hand.** Every plugin
+  installed from the catalog has an origin record (`origin.json`) in its
+  directory; an update touches only a plugin whose files are the same as that
+  record.
 
-## Yeni sürüm yayımlamak
+## Publishing a new version
 
 ```bash
-# 1. eklentiyi değiştir, plugin.json'daki "version"ı artır
-# 2. indeksi yeniden üret (şablon index.json'dan okunur)
+# 1. change the plugin, raise "version" in plugin.json
+# 2. regenerate the index (the template is read from index.json)
 headshell plugin index .
-# 3. commit'le ve sürümün etiketini at
-git commit -am "soundcloud 0.2.1: …"
-git tag soundcloud-0.2.1
-# 4. ikisini BİRLİKTE gönder
-git push origin main soundcloud-0.2.1
+# 3. commit and tag the version
+git commit -am "soundcloud 0.2.2: …"
+git tag soundcloud-0.2.2
+# 4. push the two TOGETHER
+git push origin main soundcloud-0.2.2
 ```
 
-Etiket commit'le birlikte gitmeli: indeks yeni etiketi gösteriyor ve etiket
-yoksa kurulum `dosya bulunamadı (HTTP 404)` der.
+The tag has to go together with the commit: the index points at the new tag, and
+if the tag doesn't exist, installation says `file not found (HTTP 404)`.
 
-Bir sürümün etiketi **taşınmaz.** Kurulu kopyalar o sürümün karmasını
-kaydetti; aynı sürümle başka dosya yayımlamak onlara "yerelde değiştirilmiş"
-dedirtir. Düzeltme her zaman yeni bir sürümdür.
+A version's tag **is never moved.** Installed copies recorded that version's hash;
+publishing different files under the same version would make them say "changed
+locally". A fix is always a new version.
 
-CI her gönderimde üç şeyi denetler: indeks güncel mi (`plugin index
---check`), her sürümün etiketi var mı ve dosyaları o etiketle aynı mı, ve
-`main`'de her eklenti yayımlanan katalogdan gerçekten kurulabiliyor mu.
+CI checks three things on every push: is the index up to date
+(`plugin index --check`), does every version's tag exist and are its files the same
+as that tag's, and can every plugin on `main` really be installed from the
+published catalog.
 
-## Kataloğa eklenti eklemek
+## Adding a plugin to the catalog
 
-Bir PR aç: yeni bir `<ad>/` dizini (`plugin.json` + betik) ve yeniden
-üretilmiş `index.json`. Kurallar:
+Open a PR: a new `<name>/` directory (`plugin.json` + the script) and a regenerated
+`index.json`. The rules:
 
-- **Ad:** küçük harf ASCII harf, rakam, `-`, `_`, `.`; harf ya da rakamla
-  başlar. Dizin adı ile `plugin.json`'daki `name` aynı.
-- **`version` zorunlu.** Güncellemeyi o yakalıyor.
-- **İzinler olabildiğince dar.** Onay ekranında kullanıcı onları okuyor ve
-  eklenti beyan etmediği hiçbir adrese bağlanamıyor.
-- **Kendi başına kurulum yok.** Bir araç gerekiyorsa `requires` ile beyan
-  edilir: platform başına sabitlenmiş sürüm, adres ve sha256. İndirmeyi
-  motor yapar, root istenmez (headshell D-049, D-055).
+- **Name:** lowercase ASCII letters, digits, `-`, `_`, `.`; it starts with a letter
+  or a digit. The directory name and the `name` in `plugin.json` are the same.
+- **`version` is required.** That's what catches an update.
+- **Permissions as narrow as possible.** The user reads them on the approval
+  screen, and the plugin can't connect to any address it didn't declare.
+- **No installing on its own.** If a tool is needed, it's declared with
+  `requires`: a pinned version, address and sha256 per platform. The engine does the
+  download; no root is asked for (headshell D-049, D-055).
 
-Etiketi birleştiren bakımcı atar.
+The maintainer who merges pushes the tag.
 
-## Lisans
+## License
 
-MIT OR Apache-2.0 — headshell'in kendisi gibi.
+MIT OR Apache-2.0 — like headshell itself.

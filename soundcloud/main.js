@@ -1,41 +1,41 @@
-// SoundCloud sağlayıcı eklentisi (api 2, D-069).
+// The SoundCloud provider plugin (api 2, D-069).
 //
-// Faz 2 §2.2'nin referans eklentisi; D-069'da Python'dan JS'e taşındı. İşi
-// katalog sunmak değil, eklenti sözleşmesinin çekirdeğin dışında yazılabilir
-// olduğunu kanıtlamak: burada Rust yok, yalnızca motorun verdiği `host`
-// nesnesi var. Kullanıcının makinesinde hiçbir şey kurulu olması gerekmiyor.
+// Phase 2 §2.2's reference plugin; moved from Python to JS in D-069. Its job is
+// not to offer a catalog but to prove that the plugin contract can be written
+// outside the core: there's no Rust here, only the `host` object the engine
+// gives. Nothing has to be installed on the user's machine.
 //
-// Kapsam bilerek dar — `search` + `stream`. Ses röle edilmez (K3): çözülen
-// adres çekirdeğe verilir, akışı o çeker. DRM aşan hiçbir şey yok (D-026):
-// SoundCloud'un kendi `progressive` MP3 transcoding'i imzalı bir adres
-// döndürüyor, biz onu olduğu gibi geçiriyoruz.
+// The scope is deliberately narrow — `search` + `stream`. Audio is never relayed
+// (K3): the resolved address is handed to the core, and the core fetches the
+// stream. Nothing circumvents DRM (D-026): SoundCloud's own `progressive` MP3
+// transcoding returns a signed address, and we pass it on as it is.
 //
-// Ölçüm (2026-09-01, 200 parçalık örnek): parçaların %99'unda `progressive`
-// varyant var, %1'i yalnızca HLS sunuyor. HLS çözücü yazmadık; o %1 için
-// açık hata dönüyoruz — sessizce boş sonuç değil (K9).
+// Measurement (2026-09-01, a sample of 200 tracks): 99% of the tracks have a
+// `progressive` variant; 1% offer only HLS. We didn't write an HLS decoder; for
+// that 1% we return an explicit error — not a silent empty result (K9).
 
-const VERSION = "0.2.0";
+const VERSION = "0.2.1";
 const HOME_URL = "https://soundcloud.com/";
 const API_BASE = "https://api-v2.soundcloud.com";
 const HEADERS = { "User-Agent": `headshell-soundcloud/${VERSION}` };
 
-// Keşfin toplam bütçesi. Aşılırsa "bulamadım" deriz — çağrının kendi süresi
-// (20 sn) dolmadan, sebebini söyleyebilecekken.
+// The total budget for discovery. If it runs out we say "couldn't find it" —
+// before the call's own time (20 s) runs out, while we can still say why.
 const DISCOVERY_BUDGET_MS = 15000;
 
 const ASSET_PATTERN = /https:\/\/a-v2\.sndcdn\.com\/assets\/[^"']+\.js/g;
 const CLIENT_ID_PATTERN = /client_id[=:]"?([A-Za-z0-9]{32})/;
 const CLIENT_ID_SHAPE = /^[A-Za-z0-9]{32}$/;
 
-// client_id ve nereden geldiği: "sır" | "önbellek" | "keşif". health() bunu
-// raporluyor (D-043).
+// The client_id and where it came from: "secret" | "cache" | "discovery".
+// health() reports it (D-043).
 let clientId = null;
 let clientIdSource = null;
 
-/** Sunucu 2xx dışında bir kod döndürdü. `status` çağıranın ayırt etmesi için. */
+/** The server returned a code outside 2xx. `status` is for the caller to tell cases apart. */
 class StatusError extends Error {
   constructor(status, url) {
-    super(`SoundCloud HTTP ${status} döndürdü (${url.split("?")[0]})`);
+    super(`SoundCloud returned HTTP ${status} (${url.split("?")[0]})`);
     this.status = status;
   }
 }
@@ -47,10 +47,10 @@ function get(url) {
   try {
     res = host.http.get(url, HEADERS);
   } catch (err) {
-    throw new Error(`SoundCloud'a ulaşılamadı: ${err.message}`);
+    throw new Error(`SoundCloud could not be reached: ${err.message}`);
   }
   if (res.status === 429) {
-    throw new Error("SoundCloud kotayı doldurdu (429); bir süre bekleyin");
+    throw new Error("SoundCloud's quota is used up (429); wait a while");
   }
   if (!res.ok) throw new StatusError(res.status, url);
   return res.body;
@@ -61,7 +61,7 @@ function getJson(url) {
   try {
     return JSON.parse(body);
   } catch (err) {
-    throw new Error(`SoundCloud JSON olmayan bir cevap verdi: ${err.message}`);
+    throw new Error(`SoundCloud gave an answer that isn't JSON: ${err.message}`);
   }
 }
 
@@ -75,30 +75,30 @@ function apiUrl(path, params) {
   return `${API_BASE}${path}?${query({ ...params, client_id: resolveClientId() })}`;
 }
 
-/** `api-v2`'ye çağrı. client_id reddedilirse **bir kez** tazeleyip tekrar dener. */
+/** A call to `api-v2`. If the client_id is rejected, it refreshes it **once** and retries. */
 function apiGet(path, params = {}) {
   try {
     return getJson(apiUrl(path, params));
   } catch (err) {
-    // 404 bir hata değil "yok" cevabıdır; onu burada yutmak, çağıranın
-    // ayırt etmesi gereken iki durumu tek tanıya indirger (K9).
+    // A 404 isn't an error but a "doesn't exist" answer; swallowing it here would
+    // reduce two cases the caller has to tell apart to a single diagnosis (K9).
     if (!(err instanceof StatusError) || (err.status !== 401 && err.status !== 403)) throw err;
-    // Kullanıcının verdiği anahtarı biz tazeleyemeyiz — kendisi bilmeli.
-    if (clientIdSource === "sır") {
+    // We can't refresh a key the user gave — they should know.
+    if (clientIdSource === "secret") {
       throw new Error(
-        `Verdiğiniz client_id reddedildi (HTTP ${err.status}). ` +
-          "`headshell secret remove plugin:soundcloud client_id` derseniz eklenti kendisi keşfeder.",
+        `The client_id you gave was rejected (HTTP ${err.status}). ` +
+          "If you run `headshell secret remove plugin:soundcloud client_id`, the plugin discovers one itself.",
       );
     }
-    host.log.info(`client_id reddedildi (HTTP ${err.status}), yeniden keşfediliyor`);
+    host.log.info(`client_id rejected (HTTP ${err.status}), discovering it again`);
     forgetClientId();
     try {
       return getJson(apiUrl(path, params));
     } catch (retry) {
       if (retry instanceof StatusError) {
         throw new Error(
-          `Taze client_id ile de reddedildik (HTTP ${retry.status}); ` +
-            "SoundCloud'un web yüzeyi değişmiş olabilir.",
+          `We were rejected with a fresh client_id too (HTTP ${retry.status}); ` +
+            "SoundCloud's web surface may have changed.",
         );
       }
       throw retry;
@@ -106,11 +106,11 @@ function apiGet(path, params = {}) {
   }
 }
 
-// --- client_id çözümü (D-043) ------------------------------------------------
+// --- resolving the client_id (D-043) ---------------------------------------------
 //
-// Üç kaynak, bu sırayla: kullanıcının sırrı → motorun deposundaki önbellek →
-// keşif. Sıra kasıtlı: kullanıcı bir anahtar verdiyse onu kullanırız,
-// arkasından dolanmayız.
+// Three sources, in this order: the user's secret → the cache in the engine's
+// store → discovery. The order is deliberate: if the user gave a key, we use it
+// and don't work around it.
 
 function forgetClientId() {
   clientId = null;
@@ -119,40 +119,41 @@ function forgetClientId() {
 }
 
 /**
- * SoundCloud'un web istemcisinin kullandığı anahtarı JS varlıklarından çıkarır.
+ * Extracts the key SoundCloud's web client uses from its JS assets.
  *
- * Belgelenmiş bir uç nokta değil; haber vermeden bozulabilir. Bozulduğunda ne
- * olacağı açık: bir hata ve kullanıcıya "kendi client_id'ni ver".
+ * It isn't a documented endpoint; it can break without warning. What happens when
+ * it breaks is clear: an error, and "give your own client_id" to the user.
  */
 function discoverClientId() {
   const deadline = Date.now() + DISCOVERY_BUDGET_MS;
   const home = get(HOME_URL);
   const assets = home.match(ASSET_PATTERN) ?? [];
-  if (assets.length === 0) throw new Error("SoundCloud ana sayfasında JS varlığı bulunamadı");
+  if (assets.length === 0) throw new Error("no JS asset found on SoundCloud's home page");
 
-  // Sondan başa: anahtar pratikte son paketlerde duruyor, baştan taramak
-  // gereksiz yere birkaç megabayt indirmek olur.
+  // From the end to the start: in practice the key sits in the last bundles, and
+  // scanning from the start would mean downloading a few megabytes for nothing.
   for (const asset of assets.reverse()) {
     if (Date.now() > deadline) break;
     let body;
     try {
       body = get(asset);
     } catch (err) {
-      host.log.warn(`JS varlığı okunamadı (${asset}): ${err.message}`);
+      host.log.warn(`could not read a JS asset (${asset}): ${err.message}`);
       continue;
     }
     const found = body.match(CLIENT_ID_PATTERN);
     if (found) return found[1];
   }
   throw new Error(
-    "client_id keşfedilemedi (SoundCloud'un web yüzeyi değişmiş olabilir). " +
-      "`headshell secret set plugin:soundcloud client_id` ile kendi anahtarınızı verebilirsiniz.",
+    "could not discover a client_id (SoundCloud's web surface may have changed). " +
+      "You can give your own key with `headshell secret set plugin:soundcloud client_id`.",
   );
 }
 
 /**
- * Tembel çözüm: yüklemede değil, ilk gerçek çağrıda. Motor yükleme sırasında
- * ağa çıkmaya zaten izin vermiyor; keşif ağ işidir, buraya ait.
+ * Lazy resolution: not while loading but on the first real call. The engine
+ * doesn't allow going to the network while loading anyway; discovery is network
+ * work and belongs here.
  */
 function resolveClientId() {
   if (clientId) return clientId;
@@ -160,50 +161,52 @@ function resolveClientId() {
   const secret = host.secrets.get("client_id");
   if (secret !== null && secret.trim() !== "") {
     clientId = secret.trim();
-    clientIdSource = "sır";
+    clientIdSource = "secret";
     return clientId;
   }
 
   const cached = host.storage.get("client_id");
-  // Bozuk bir önbellek sessizce kabul edilirse hata SoundCloud'un 401'i
-  // olarak, yani yanlış yerde görünür.
+  // If a broken cache were silently accepted, the error would show as
+  // SoundCloud's 401 — that is, in the wrong place.
   if (cached !== null && CLIENT_ID_SHAPE.test(cached)) {
     clientId = cached;
-    clientIdSource = "önbellek";
+    clientIdSource = "cache";
     return clientId;
   }
 
   clientId = discoverClientId();
-  clientIdSource = "keşif";
+  clientIdSource = "discovery";
   try {
     host.storage.set("client_id", clientId);
-    host.log.info("client_id keşfedildi ve önbelleğe alındı");
+    host.log.info("client_id discovered and cached");
   } catch (err) {
-    // Önbellek bir hızlandırmadır; yazılamaması işi durdurmaz ama sessiz de kalmaz.
-    host.log.warn(`client_id önbelleğe yazılamadı: ${err.message}`);
+    // The cache is a speed-up; failing to write it doesn't stop the work, but it
+    // doesn't stay silent either.
+    host.log.warn(`could not write the client_id to the cache: ${err.message}`);
   }
   return clientId;
 }
 
-// --- parça dönüşümü --------------------------------------------------------------
+// --- track conversion ------------------------------------------------------------
 
 /**
- * `api-v2` parçasını sözleşmenin parça biçimine çevirir.
+ * Turns an `api-v2` track into the contract's track shape.
  *
- * SoundCloud'da albüm kavramı yok (parçalar setlere ait); `album` boş kalıyor.
- * ISRC yalnızca `publisher_metadata` altında, çoğu parçada yok.
+ * SoundCloud has no concept of an album (tracks belong to sets); `album` stays
+ * empty. The ISRC is only under `publisher_metadata`, and most tracks don't have
+ * one.
  */
 function toTrack(track) {
   const publisher = track.publisher_metadata ?? {};
   const user = track.user ?? {};
-  let title = track.title || "Adsız";
-  // 30 saniyelik önizleme, tam parça değil. Süresi zaten 30000 geliyor;
-  // başlıkta da söylüyoruz ki kullanıcı çalarken şaşırmasın.
-  if (track.policy === "SNIP") title = `${title} [önizleme]`;
+  let title = track.title || "Untitled";
+  // A 30-second preview, not the full track. Its duration already comes as
+  // 30000; we say so in the title too, so the user isn't surprised while playing.
+  if (track.policy === "SNIP") title = `${title} [preview]`;
 
   const result = {
     id: String(track.id),
-    artist: publisher.artist || user.username || "Bilinmeyen sanatçı",
+    artist: publisher.artist || user.username || "Unknown artist",
     title,
     duration_ms: Math.trunc(Number(track.duration) || 0),
   };
@@ -212,8 +215,8 @@ function toTrack(track) {
 }
 
 /**
- * Progressive (düz HTTP) MP3 transcoding'inin çözüm adresi. HLS varyantları
- * bilerek atlanıyor: çekirdek düz bir akış bekliyor.
+ * The resolution address of the progressive (plain HTTP) MP3 transcoding. The HLS
+ * variants are skipped on purpose: the core expects a plain stream.
  */
 function progressiveUrl(track) {
   const transcodings = track.media?.transcodings ?? [];
@@ -221,26 +224,26 @@ function progressiveUrl(track) {
   return progressive?.url ?? null;
 }
 
-// --- sözleşme --------------------------------------------------------------------
+// --- the contract ------------------------------------------------------------------
 
 export function health() {
   let payload;
   try {
-    // En ucuz gerçek çağrı: client_id'yi de, uç noktayı da birlikte sınar.
+    // The cheapest real call: it tests the client_id and the endpoint together.
     payload = apiGet("/search/tracks", { q: "a", limit: 1 });
   } catch (err) {
-    // Ulaşamamak bir sağlık cevabıdır, hata değil.
+    // Being unreachable is a health answer, not an error.
     return { reachable: false, detail: err.message };
   }
   const total = payload.total_results;
   return {
     reachable: true,
-    // Katalog boyutu sorguya göre değişen bir sayı, sağlayıcının toplamı
-    // değil. "Bilmiyorum" demek, yanlış bir sayı vermekten iyidir.
+    // The catalog size is a number that changes with the query, not the
+    // provider's total. Saying "I don't know" is better than giving a wrong number.
     track_count: null,
     detail:
-      `SoundCloud API v2, client_id kaynağı: ${clientIdSource}` +
-      (Number.isInteger(total) ? `, örnek sorgu ${total} sonuç veriyor` : ""),
+      `SoundCloud API v2, client_id source: ${clientIdSource}` +
+      (Number.isInteger(total) ? `, a sample query gives ${total} results` : ""),
   };
 }
 
@@ -259,20 +262,20 @@ export function search(text, limit) {
     }
     tracks.push(toTrack(track));
   }
-  // K9: düşürülen kayıt sayılır ve raporlanır, sessizce yutulmaz.
-  if (skipped > 0) host.log.warn(`aramada ${skipped} kayıt parça olmadığı için atlandı`);
+  // K9: a dropped record is counted and reported, not silently swallowed.
+  if (skipped > 0) host.log.warn(`${skipped} search records skipped because they aren't tracks`);
   return tracks;
 }
 
 export function resolve_source(id) {
   const trackId = String(id ?? "").trim();
-  if (trackId === "") throw new Error("parça kimliği boş");
+  if (trackId === "") throw new Error("the track ID is empty");
 
   let track;
   try {
     track = apiGet(`/tracks/${encodeURIComponent(trackId)}`);
   } catch (err) {
-    // "Yok" bir cevaptır, hata değil.
+    // "Doesn't exist" is an answer, not an error.
     if (err instanceof StatusError && err.status === 404) return null;
     throw err;
   }
@@ -280,15 +283,17 @@ export function resolve_source(id) {
 
   const transcoding = progressiveUrl(track);
   if (!transcoding) {
-    // "Çalamıyorum" ile "yok" farklı tanılardır (K9). Ölçtük: parçaların ~%1'i böyle.
+    // "I can't play it" and "it doesn't exist" are different diagnoses (K9). We
+    // measured it: ~1% of the tracks are like this.
     throw new Error(
-      "bu parça yalnızca HLS sunuyor; eklenti HLS çözmüyor (parçaların ~%1'i böyle)",
+      "this track offers only HLS; the plugin doesn't decode HLS (~1% of the tracks are like this)",
     );
   }
 
   const resolved = getJson(`${transcoding}?${query({ client_id: resolveClientId() })}`);
-  if (!resolved.url) throw new Error("SoundCloud akış adresi döndürmedi");
+  if (!resolved.url) throw new Error("SoundCloud returned no stream address");
 
-  // Adres imzalı ve süreli — önbelleğe alınmaz, her çalmada yeniden çözülür.
+  // The address is signed and time-limited — it isn't cached; it's resolved
+  // again on every play.
   return { kind: "http_stream", url: resolved.url, headers: [] };
 }

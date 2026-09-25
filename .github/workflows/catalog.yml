@@ -1,0 +1,93 @@
+# The catalog repository's gate (headshell D-071).
+#
+# Three checks; each catches in advance a break the user would see on
+# installation:
+#
+# 1. Is the index up to date — `headshell plugin index --check`. Every manifest
+#    goes through the validation the app applies on installation, and the files'
+#    hashes are compared with the hashes in the index. An out-of-date index means
+#    "hash mismatch" on installation.
+# 2. Does every version's tag exist, and are its files the same as that tag's?
+#    The index points at the files on the `<name>-<version>` tag: if the tag
+#    doesn't exist, installation gets a 404; if a file changed without the version
+#    going up, the hash doesn't match.
+# 3. Does every plugin really install from the published catalog — the user's
+#    path, through `raw.githubusercontent.com`, with this commit's index.
+#
+# 2 and 3 run only on a push to `main`: the maintainer who merges pushes the tag
+# of a new version in a PR.
+#
+# headshell is built from source, because `plugin index` isn't in a published
+# release yet. Once it is, downloading the release binary is enough.
+name: catalog
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  catalog:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The tags, for check 2.
+          fetch-depth: 0
+
+      # cpal links against ALSA; the CLI doesn't build without it.
+      - name: System dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libasound2-dev
+
+      - name: Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build headshell
+        run: |
+          cargo install --locked --git https://github.com/headshell/headshell headshell-cli
+          headshell --version
+
+      - name: 1 — is the index up to date
+        run: headshell --data-dir "$RUNNER_TEMP/data" plugin index . --check
+
+      - name: 2 — does every version's tag exist, are its files the same
+        if: github.event_name == 'push'
+        run: |
+          set -eu
+          ok=1
+          for manifest in */plugin.json; do
+            name=$(jq -r .name "$manifest")
+            version=$(jq -r .version "$manifest")
+            main=$(jq -r .main "$manifest" | sed 's|^\./||')
+            tag="$name-$version"
+            if ! git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+              echo "::error::there is no $tag tag, but the index points at it — git tag $tag && git push origin $tag"
+              ok=0
+              continue
+            fi
+            if ! git diff --quiet "$tag" HEAD -- "$name/plugin.json" "$name/$main"; then
+              echo "::error::the $name files differ from the $tag tag, but the version didn't go up — publish a new version"
+              ok=0
+            fi
+          done
+          [ "$ok" = 1 ]
+
+      - name: 3 — does it install from the catalog
+        if: github.event_name == 'push'
+        env:
+          HEADSHELL_PLUGIN_INDEX: https://raw.githubusercontent.com/headshell/plugins/${{ github.sha }}/index.json
+        run: |
+          set -eu
+          for manifest in */plugin.json; do
+            name=$(jq -r .name "$manifest")
+            headshell --data-dir "$RUNNER_TEMP/install" plugin install "$name"
+          done
