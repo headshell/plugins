@@ -1,20 +1,21 @@
-// The SoundCloud provider plugin (api 2, D-069).
+// The SoundCloud provider plugin (api 3, D-069, D-076).
 //
 // Phase 2 §2.2's reference plugin; moved from Python to JS in D-069. Its job is
 // not to offer a catalog but to prove that the plugin contract can be written
 // outside the core: there's no Rust here, only the `host` object the engine
 // gives. Nothing has to be installed on the user's machine.
 //
-// The scope is deliberately narrow — `search` + `stream`. Audio is never relayed
-// (K3): the resolved address is handed to the core, and the core fetches the
-// stream. Nothing circumvents DRM (D-026): SoundCloud's own `progressive` MP3
-// transcoding returns a signed address, and we pass it on as it is.
+// The scope is deliberately narrow — `search` + `stream` + the track's cover
+// (api 3). Audio is never relayed (K3): the resolved address is handed to the
+// core, and the core fetches the stream. Nothing circumvents DRM (D-026):
+// SoundCloud's own `progressive` MP3 transcoding returns a signed address, and
+// we pass it on as it is.
 //
 // Measurement (2026-09-01, a sample of 200 tracks): 99% of the tracks have a
 // `progressive` variant; 1% offer only HLS. We didn't write an HLS decoder; for
 // that 1% we return an explicit error — not a silent empty result (K9).
 
-const VERSION = "0.2.1";
+const VERSION = "0.3.0";
 const HOME_URL = "https://soundcloud.com/";
 const API_BASE = "https://api-v2.soundcloud.com";
 const HEADERS = { "User-Agent": `headshell-soundcloud/${VERSION}` };
@@ -296,4 +297,45 @@ export function resolve_source(id) {
   // The address is signed and time-limited — it isn't cached; it's resolved
   // again on every play.
   return { kind: "http_stream", url: resolved.url, headers: [] };
+}
+
+// --- covers (api 3, headshell D-076) -------------------------------------------------
+//
+// A track's `artwork_url` is its cover at 100 px (`…-large.jpg`); SoundCloud keeps
+// the other sizes at the same address with another suffix, and `t500x500` exists
+// for every upload. A track without artwork has `null` there. SoundCloud's pages
+// then show the uploader's avatar — a portrait, not a cover: we say "none", and
+// the app goes on to its own chain.
+
+/** The cover's address at the size asked for: 500 px, or 100 when that is enough. */
+function coverUrl(artworkUrl, size) {
+  if (size <= 100) return artworkUrl;
+  return artworkUrl.replace(/-large(\.\w+)$/, "-t500x500$1");
+}
+
+export function artwork(id, size) {
+  const trackId = String(id ?? "").trim();
+  if (trackId === "") throw new Error("the track ID is empty");
+
+  let track;
+  try {
+    track = apiGet(`/tracks/${encodeURIComponent(trackId)}`);
+  } catch (err) {
+    // "Doesn't exist" is an answer, not an error.
+    if (err instanceof StatusError && err.status === 404) return null;
+    throw err;
+  }
+  if (!track.artwork_url) return null;
+
+  const url = coverUrl(track.artwork_url, Number(size) || 500);
+  let res;
+  try {
+    // `binary`: the image comes as base64 — read as text, it would be destroyed.
+    res = host.http.request({ url, headers: HEADERS, binary: true });
+  } catch (err) {
+    throw new Error(`SoundCloud's cover could not be fetched: ${err.message}`);
+  }
+  if (res.status === 404) return null;
+  if (!res.ok) throw new StatusError(res.status, url);
+  return { mime: res.headers["content-type"] ?? null, data: res.body };
 }

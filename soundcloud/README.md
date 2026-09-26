@@ -21,6 +21,10 @@ headshell secret set plugin:soundcloud client_id
 (`secret` / `cache` / `discovery`) — so that an install working with a wrong key
 doesn't silently look right (headshell D-043).
 
+**Covers:** the track's own artwork, at 500 px. A track without artwork gives none
+(SoundCloud shows the uploader's avatar there, which isn't a cover), and the app
+goes on to its own chain — MusicBrainz and the Cover Art Archive, when it's online.
+
 **Known limits**, both deliberate:
 
 - **`progressive` (plain HTTP MP3) only.** Measured: 99% of the tracks have it. The
@@ -32,4 +36,4 @@ Discovery relies on an undocumented path and **can break without warning**. If i
 breaks, the plugin tells you to give your own `client_id`.
 
 Permissions: `soundcloud.com`, `api-v2.soundcloud.com`, `*.sndcdn.com` (the web
-client's JS assets and the audio stream are under this domain).
+client's JS assets, the audio stream and the covers are under this domain).

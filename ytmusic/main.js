@@ -1,4 +1,4 @@
-// The YouTube Music provider plugin (api 2, D-048 → D-069).
+// The YouTube Music provider plugin (api 3, D-048 → D-069 → D-076).
 //
 // The same rules as the SoundCloud plugin: audio is never relayed (K3), and
 // nothing circumvents DRM (D-026). It moved from Python to JS in D-069, and now
@@ -17,6 +17,9 @@
 // - **The stream** goes to yt-dlp. YouTube's signature/nsig work isn't this
 //   project's job; when it breaks, yt-dlp gets updated, not us.
 //
+// **Covers** (api 3) come from InnerTube too: the `next` endpoint gives a song's
+// square album art, up to 544 px, on `yt3.googleusercontent.com`.
+//
 // ## Two traps, both measured
 //
 // 1. **`bestaudio` can't be played.** The core's symphonia has no opus decoder
@@ -27,6 +30,7 @@
 //    is passed to the core together with the stream source.
 
 const INNERTUBE_URL = "https://music.youtube.com/youtubei/v1/search";
+const INNERTUBE_NEXT_URL = "https://music.youtube.com/youtubei/v1/next";
 const WATCH_URL = "https://music.youtube.com/watch?v=";
 
 // The InnerTube client context. No key needed (measured, D-048); the client name
@@ -60,16 +64,12 @@ const DURATION_PATTERN = /^(?:(\d+):)?(\d{1,2}):(\d{2})$/;
 
 // --- InnerTube -------------------------------------------------------------------
 
-/** Calls YouTube Music's song search and returns the raw rows. */
-function innertubeSearch(text, limit) {
-  const payload = JSON.stringify({
-    context: { client: { ...INNERTUBE_CLIENT } },
-    query: text,
-    params: SONGS_FILTER,
-  });
+/** Posts to an InnerTube endpoint and returns the parsed answer. */
+function innertube(url, body, what) {
+  const payload = JSON.stringify({ context: { client: { ...INNERTUBE_CLIENT } }, ...body });
   let res;
   try {
-    res = host.http.post(INNERTUBE_URL, payload, {
+    res = host.http.post(url, payload, {
       "Content-Type": "application/json",
       "User-Agent": BROWSER_UA,
       Origin: "https://music.youtube.com",
@@ -78,16 +78,18 @@ function innertubeSearch(text, limit) {
     throw new Error(`YouTube Music could not be reached: ${err.message}`);
   }
   if (!res.ok) {
-    throw new Error(
-      `the YouTube Music search returned ${res.status}; the InnerTube surface may have changed`,
-    );
+    throw new Error(`the YouTube Music ${what} returned ${res.status}; the InnerTube surface may have changed`);
   }
-  let document;
   try {
-    document = JSON.parse(res.body);
+    return JSON.parse(res.body);
   } catch (err) {
     throw new Error(`YouTube Music gave an answer that isn't JSON: ${err.message}`);
   }
+}
+
+/** Calls YouTube Music's song search and returns the raw rows. */
+function innertubeSearch(text, limit) {
+  const document = innertube(INNERTUBE_URL, { query: text, params: SONGS_FILTER }, "search");
   return collectSongRows(document).slice(0, limit);
 }
 
@@ -313,6 +315,63 @@ export function search(text, limit) {
     host.log.warn(`${skipped} search rows could not be converted (missing ID/artist/title)`);
   }
   return tracks;
+}
+
+// --- covers (api 3, headshell D-076) -------------------------------------------------
+//
+// The `next` endpoint (what the player asks when a song starts) carries the song
+// in its queue panel, with its thumbnails: for a song — not a video — they are
+// the album's square art at 60 … 544 px (measured 2026-09-26). A video's
+// thumbnail is a 16:9 frame on `i.ytimg.com`, not a cover: that is "none", and
+// the app goes on to its own chain.
+
+const COVER_HOSTS = ["yt3.googleusercontent.com", "lh3.googleusercontent.com"];
+
+/** The thumbnails `next` gives for `video`, or `null` when the song isn't in the answer. */
+function nextThumbnails(video) {
+  const document = innertube(INNERTUBE_NEXT_URL, { videoId: video, isAudioOnly: true }, "player queue");
+  const stack = [document];
+  while (stack.length > 0) {
+    const node = stack.pop();
+    if (Array.isArray(node)) {
+      for (const child of node) stack.push(child);
+    } else if (node !== null && typeof node === "object") {
+      const panel = node.playlistPanelVideoRenderer;
+      if (panel?.videoId === video) return panel.thumbnail?.thumbnails ?? [];
+      for (const child of Object.values(node)) stack.push(child);
+    }
+  }
+  return null;
+}
+
+/** The smallest square cover at least `size` wide, or the largest there is. */
+function pickCover(thumbnails, size) {
+  const covers = thumbnails
+    .filter((t) => typeof t.url === "string" && COVER_HOSTS.some((h) => t.url.startsWith(`https://${h}/`)))
+    .sort((a, b) => (a.width ?? 0) - (b.width ?? 0));
+  if (covers.length === 0) return null;
+  return covers.find((t) => (t.width ?? 0) >= size) ?? covers[covers.length - 1];
+}
+
+export function artwork(id, size) {
+  const video = String(id ?? "").trim();
+  if (video === "") throw new Error("the track ID is empty");
+
+  const thumbnails = nextThumbnails(video);
+  if (thumbnails === null) return null;
+  const cover = pickCover(thumbnails, Number(size) || 500);
+  if (cover === null) return null;
+
+  let res;
+  try {
+    // `binary`: the image comes as base64 — read as text, it would be destroyed.
+    res = host.http.request({ url: cover.url, headers: { "User-Agent": BROWSER_UA }, binary: true });
+  } catch (err) {
+    throw new Error(`YouTube Music's cover could not be fetched: ${err.message}`);
+  }
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`YouTube Music's cover returned HTTP ${res.status}`);
+  return { mime: res.headers["content-type"] ?? null, data: res.body };
 }
 
 export function resolve_source(id) {

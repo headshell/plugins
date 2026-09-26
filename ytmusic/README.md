@@ -14,6 +14,11 @@ headshell provider test ytmusic     # should write "available" + the yt-dlp vers
 headshell play "nujabes aruarian dance"
 ```
 
+**Covers:** the song's album art, from InnerTube's `next` endpoint (square, up to
+544 px, on `yt3.googleusercontent.com` — the permission list names it). A video
+that isn't a song has only a 16:9 frame; that gives no cover, and the app goes on
+to its own chain.
+
 **NOTE:** yt-dlp isn't a script the engine jails but a separate program: its network
 traffic isn't limited by this plugin's permission list. The approval screen writes
 this separately on the `engine` line.

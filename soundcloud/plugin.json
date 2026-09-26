@@ -1,12 +1,13 @@
 {
   "name": "soundcloud",
   "display_name": "SoundCloud",
-  "version": "0.2.1",
-  "api": 2,
+  "version": "0.3.0",
+  "api": 3,
+  "artwork": true,
   "main": "main.js",
   "capabilities": ["search", "stream"],
   "permissions": {
     "net": ["soundcloud.com", "api-v2.soundcloud.com", "*.sndcdn.com"]
   },
-  "description": "Searches and plays SoundCloud. Takes the client_id from the secret store, and otherwise discovers it itself. `*.sndcdn.com`: the web client's JS assets (a-v2) and the audio stream (cf-media) are under this domain."
+  "description": "Searches and plays SoundCloud. Takes the client_id from the secret store, and otherwise discovers it itself. Gives the track's cover. `*.sndcdn.com`: the web client's JS assets (a-v2), the audio stream (cf-media) and the covers (i1) are under this domain."
 }
