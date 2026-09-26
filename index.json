@@ -4,7 +4,7 @@
   "plugins": [
     {
       "manifest": {
-        "api": 3,
+        "api": 4,
         "artwork": true,
         "capabilities": [
           "search",
@@ -12,6 +12,7 @@
         ],
         "description": "Searches and plays SoundCloud. Takes the client_id from the secret store, and otherwise discovers it itself. Gives the track's cover. `*.sndcdn.com`: the web client's JS assets (a-v2), the audio stream (cf-media) and the covers (i1) are under this domain.",
         "display_name": "SoundCloud",
+        "lyrics": false,
         "main": "main.js",
         "name": "soundcloud",
         "permissions": {
@@ -21,31 +22,32 @@
             "*.sndcdn.com"
           ]
         },
-        "version": "0.3.0"
+        "version": "0.4.0"
       },
       "files": [
         {
           "path": "plugin.json",
-          "url": "https://raw.githubusercontent.com/headshell/plugins/refs/tags/soundcloud-0.3.0/soundcloud/plugin.json",
-          "sha256": "ca028a98e8910f93782af112cefb26ec15f64a1189699f001cce3ea4cc5ab7c6"
+          "url": "https://raw.githubusercontent.com/headshell/plugins/refs/tags/soundcloud-0.4.0/soundcloud/plugin.json",
+          "sha256": "6f8df5c150b28b4072174dc81a498b2ae44855a5acff264dd20f75fa29c1b753"
         },
         {
           "path": "main.js",
-          "url": "https://raw.githubusercontent.com/headshell/plugins/refs/tags/soundcloud-0.3.0/soundcloud/main.js",
-          "sha256": "b3aa4f14acfcb0b23ae1ec1e04f3414fb4e3c17206f12a89ba4bb6dc01f06944"
+          "url": "https://raw.githubusercontent.com/headshell/plugins/refs/tags/soundcloud-0.4.0/soundcloud/main.js",
+          "sha256": "40d8e151be03f32eccef5938f2d463672844a8431adcabd1095c9a2e8a0663e4"
         }
       ]
     },
     {
       "manifest": {
-        "api": 3,
+        "api": 4,
         "artwork": true,
         "capabilities": [
           "search",
           "stream"
         ],
-        "description": "Searches YouTube Music (InnerTube) and plays the m4a stream it resolves with yt-dlp. Gives the song's album art from InnerTube (`yt3`/`lh3.googleusercontent.com`). The engine installs yt-dlp: it downloads this platform's self-contained binary and verifies its hash (D-069); no Python is needed on the system. If a `cookies` secret is given, it's passed to yt-dlp as a cookie file — YouTube puts up a bot wall for data centre addresses (D-061). NOTE — yt-dlp isn't a script the engine jails but a separate program: its network traffic isn't limited by this plugin's permission list. There's no single-file release for Linux armv7 (`linux-arm`), and none at all for 32-bit Linux.",
+        "description": "Searches YouTube Music (InnerTube) and plays the m4a stream it resolves with yt-dlp. Gives the song's album art from InnerTube (`yt3`/`lh3.googleusercontent.com`), and its lyrics — timed line by line when YouTube Music has the timing. The engine installs yt-dlp: it downloads this platform's self-contained binary and verifies its hash (D-069); no Python is needed on the system. If a `cookies` secret is given, it's passed to yt-dlp as a cookie file — YouTube puts up a bot wall for data centre addresses (D-061). NOTE — yt-dlp isn't a script the engine jails but a separate program: its network traffic isn't limited by this plugin's permission list. There's no single-file release for Linux armv7 (`linux-arm`), and none at all for 32-bit Linux.",
         "display_name": "YouTube Music",
+        "lyrics": true,
         "main": "main.js",
         "name": "ytmusic",
         "permissions": {
@@ -100,18 +102,18 @@
             "version": "2026.08.19"
           }
         ],
-        "version": "0.5.0"
+        "version": "0.6.0"
       },
       "files": [
         {
           "path": "plugin.json",
-          "url": "https://raw.githubusercontent.com/headshell/plugins/refs/tags/ytmusic-0.5.0/ytmusic/plugin.json",
-          "sha256": "1a1fe296e408d53c8fed705cd7dace23108a3abcb4d8743faec71f38847f6b11"
+          "url": "https://raw.githubusercontent.com/headshell/plugins/refs/tags/ytmusic-0.6.0/ytmusic/plugin.json",
+          "sha256": "7c55d1647945d9f536f2e189fc7fa2007f27a348e99ce62a3a687231b92c01cc"
         },
         {
           "path": "main.js",
-          "url": "https://raw.githubusercontent.com/headshell/plugins/refs/tags/ytmusic-0.5.0/ytmusic/main.js",
-          "sha256": "ca87a36b93648417cb56d84fa68516f6f124d25c1bf546274359271e7a3c59cb"
+          "url": "https://raw.githubusercontent.com/headshell/plugins/refs/tags/ytmusic-0.6.0/ytmusic/main.js",
+          "sha256": "cb84a35c8d27481646a2a1ac8930590dc6e19ea9b30bf9b1fb4c6dec67f2386d"
         }
       ]
     }

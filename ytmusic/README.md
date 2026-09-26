@@ -19,6 +19,13 @@ headshell play "nujabes aruarian dance"
 that isn't a song has only a 16:9 frame; that gives no cover, and the app goes on
 to its own chain.
 
+**Lyrics:** the song's own, from its lyrics page at YouTube Music — the same video
+that plays, so their timing is the recording's, and the app takes them over any
+other source (headshell D-078). Timed line by line when YouTube Music has the
+timing (it came from LyricFind or Musixmatch for every song measured); otherwise
+the words alone. The credit YouTube Music shows ("Source: LyricFind") is shown
+under them. A song without lyrics gives none, and the app asks LRCLIB.
+
 **NOTE:** yt-dlp isn't a script the engine jails but a separate program: its network
 traffic isn't limited by this plugin's permission list. The approval screen writes
 this separately on the `engine` line.

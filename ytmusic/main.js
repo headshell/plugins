@@ -1,4 +1,4 @@
-// The YouTube Music provider plugin (api 3, D-048 → D-069 → D-076).
+// The YouTube Music provider plugin (api 4, D-048 → D-069 → D-076 → D-078).
 //
 // The same rules as the SoundCloud plugin: audio is never relayed (K3), and
 // nothing circumvents DRM (D-026). It moved from Python to JS in D-069, and now
@@ -20,6 +20,10 @@
 // **Covers** (api 3) come from InnerTube too: the `next` endpoint gives a song's
 // square album art, up to 544 px, on `yt3.googleusercontent.com`.
 //
+// **Lyrics** (api 4) as well: the song's own, from its lyrics page — timed
+// line by line when YouTube Music has the timing.
+
+//
 // ## Two traps, both measured
 //
 // 1. **`bestaudio` can't be played.** The core's symphonia has no opus decoder
@@ -31,6 +35,7 @@
 
 const INNERTUBE_URL = "https://music.youtube.com/youtubei/v1/search";
 const INNERTUBE_NEXT_URL = "https://music.youtube.com/youtubei/v1/next";
+const INNERTUBE_BROWSE_URL = "https://music.youtube.com/youtubei/v1/browse";
 const WATCH_URL = "https://music.youtube.com/watch?v=";
 
 // The InnerTube client context. No key needed (measured, D-048); the client name
@@ -64,14 +69,17 @@ const DURATION_PATTERN = /^(?:(\d+):)?(\d{1,2}):(\d{2})$/;
 
 // --- InnerTube -------------------------------------------------------------------
 
-/** Posts to an InnerTube endpoint and returns the parsed answer. */
-function innertube(url, body, what) {
-  const payload = JSON.stringify({ context: { client: { ...INNERTUBE_CLIENT } }, ...body });
+/**
+ * Posts to an InnerTube endpoint and returns the parsed answer. The web client
+ * unless another is given (the lyrics' timing comes only to the mobile one).
+ */
+function innertube(url, body, what, client = INNERTUBE_CLIENT, userAgent = BROWSER_UA) {
+  const payload = JSON.stringify({ context: { client: { ...client } }, ...body });
   let res;
   try {
     res = host.http.post(url, payload, {
       "Content-Type": "application/json",
-      "User-Agent": BROWSER_UA,
+      "User-Agent": userAgent,
       Origin: "https://music.youtube.com",
     });
   } catch (err) {
@@ -372,6 +380,105 @@ export function artwork(id, size) {
   if (res.status === 404) return null;
   if (!res.ok) throw new Error(`YouTube Music's cover returned HTTP ${res.status}`);
   return { mime: res.headers["content-type"] ?? null, data: res.body };
+}
+
+// --- lyrics (api 4, headshell D-078) ------------------------------------------------
+//
+// The song's own lyrics at YouTube Music: the same video that plays, so their
+// timing is the recording's — the app takes them over any other source.
+//
+// The `next` endpoint names the song's lyrics page (a tab whose page type is
+// `MUSIC_PAGE_TYPE_TRACK_LYRICS`); `browse` gives the page. Measured
+// 2026-09-26: asked as the mobile app, the page carries timed lines
+// (`timedLyricsModel`: a start in milliseconds per line, "♪" for a pause), from
+// LyricFind or Musixmatch; asked as the web client, the words alone. The mobile
+// answer was not the same on every call — once a line came without its start —
+// so the lines are checked, and without enough of them the words alone are
+// taken. "Lyrics not available" (an instrumental, a song without them) is
+// `null`: the app goes on to LRCLIB.
+
+const IOS_MUSIC_CLIENT = { clientName: "IOS_MUSIC", clientVersion: "7.21.1", hl: "en", gl: "US" };
+const IOS_MUSIC_UA = "com.google.ios.youtubemusic/7.21.1 (iPhone14,3; U; CPU iOS 17_5 like Mac OS X)";
+
+/** The first value under `key` anywhere in `document`, or `null`. */
+function findKey(document, key) {
+  const stack = [document];
+  while (stack.length > 0) {
+    const node = stack.pop();
+    if (Array.isArray(node)) {
+      for (const child of node) stack.push(child);
+    } else if (node !== null && typeof node === "object") {
+      if (node[key] !== undefined) return node[key];
+      for (const child of Object.values(node)) stack.push(child);
+    }
+  }
+  return null;
+}
+
+/** The `browseId` of the song's lyrics page, or `null` when it has none. */
+function lyricsPage(video) {
+  const document = innertube(INNERTUBE_NEXT_URL, { videoId: video, isAudioOnly: true }, "player queue");
+  const stack = [document];
+  while (stack.length > 0) {
+    const node = stack.pop();
+    if (Array.isArray(node)) {
+      for (const child of node) stack.push(child);
+    } else if (node !== null && typeof node === "object") {
+      const browse = node.tabRenderer?.endpoint?.browseEndpoint;
+      const page = browse?.browseEndpointContextSupportedConfigs?.browseEndpointContextMusicConfig?.pageType;
+      if (page === "MUSIC_PAGE_TYPE_TRACK_LYRICS" && typeof browse.browseId === "string") return browse.browseId;
+      for (const child of Object.values(node)) stack.push(child);
+    }
+  }
+  return null;
+}
+
+/** `[mm:ss.xxx]` — the millisecond kept, the core's parser reads three digits. */
+function lrcStamp(ms) {
+  const total = Math.max(0, Math.floor(ms));
+  const minutes = String(Math.floor(total / 60000)).padStart(2, "0");
+  const seconds = String(Math.floor((total % 60000) / 1000)).padStart(2, "0");
+  const millis = String(total % 1000).padStart(3, "0");
+  return `[${minutes}:${seconds}.${millis}]`;
+}
+
+function runsText(runs) {
+  return (runs ?? []).map((run) => run.text ?? "").join("");
+}
+
+export function lyrics(id) {
+  const video = String(id ?? "").trim();
+  if (video === "") throw new Error("the track ID is empty");
+
+  const page = lyricsPage(video);
+  if (page === null) return null;
+
+  // The timed lines, asked as the mobile app.
+  const timed = findKey(
+    innertube(INNERTUBE_BROWSE_URL, { browseId: page }, "lyrics page", IOS_MUSIC_CLIENT, IOS_MUSIC_UA),
+    "timedLyricsModel",
+  );
+  const all = timed?.lyricsData?.timedLyricsData ?? [];
+  const lines = all.filter((line) => Number.isFinite(Number(line?.cueRange?.startTimeMilliseconds)));
+  if (lines.length > 0 && lines.length * 2 >= all.length) {
+    const synced = lines
+      .map((line) => {
+        const words = String(line.lyricLine ?? "").trim();
+        // A pause is an empty line in LRC.
+        return `${lrcStamp(Number(line.cueRange.startTimeMilliseconds))}${words === "♪" ? "" : words}`;
+      })
+      .join("\n");
+    return { synced, attribution: timed.lyricsData.sourceMessage ?? null };
+  }
+  if (all.length > 0) {
+    host.log.warn(`${all.length - lines.length} of ${all.length} timed lyric lines came without a start; taking the words alone`);
+  }
+
+  // The words alone, as the web client shows them.
+  const shelf = findKey(innertube(INNERTUBE_BROWSE_URL, { browseId: page }, "lyrics page"), "musicDescriptionShelfRenderer");
+  const words = runsText(shelf?.description?.runs);
+  if (words.trim() === "") return null;
+  return { plain: words, attribution: runsText(shelf?.footer?.runs).trim() || null };
 }
 
 export function resolve_source(id) {

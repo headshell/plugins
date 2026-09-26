@@ -1,4 +1,4 @@
-// The SoundCloud provider plugin (api 3, D-069, D-076).
+// The SoundCloud provider plugin (api 4, D-069, D-076, D-078).
 //
 // Phase 2 §2.2's reference plugin; moved from Python to JS in D-069. Its job is
 // not to offer a catalog but to prove that the plugin contract can be written
@@ -6,7 +6,8 @@
 // gives. Nothing has to be installed on the user's machine.
 //
 // The scope is deliberately narrow — `search` + `stream` + the track's cover
-// (api 3). Audio is never relayed (K3): the resolved address is handed to the
+// (api 3). No lyrics (api 4): SoundCloud keeps none, so the manifest says
+// `"lyrics": false` and the app asks LRCLIB for them itself. Audio is never relayed (K3): the resolved address is handed to the
 // core, and the core fetches the stream. Nothing circumvents DRM (D-026):
 // SoundCloud's own `progressive` MP3 transcoding returns a signed address, and
 // we pass it on as it is.
@@ -15,7 +16,7 @@
 // `progressive` variant; 1% offer only HLS. We didn't write an HLS decoder; for
 // that 1% we return an explicit error — not a silent empty result (K9).
 
-const VERSION = "0.3.0";
+const VERSION = "0.4.0";
 const HOME_URL = "https://soundcloud.com/";
 const API_BASE = "https://api-v2.soundcloud.com";
 const HEADERS = { "User-Agent": `headshell-soundcloud/${VERSION}` };

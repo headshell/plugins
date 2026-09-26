@@ -25,6 +25,9 @@ doesn't silently look right (headshell D-043).
 (SoundCloud shows the uploader's avatar there, which isn't a cover), and the app
 goes on to its own chain — MusicBrainz and the Cover Art Archive, when it's online.
 
+**Lyrics:** SoundCloud keeps none. The manifest says so (`"lyrics": false`), and
+the app asks LRCLIB for a track's lyrics itself (headshell D-078).
+
 **Known limits**, both deliberate:
 
 - **`progressive` (plain HTTP MP3) only.** Measured: 99% of the tracks have it. The

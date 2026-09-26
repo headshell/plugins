@@ -9,7 +9,7 @@ repository, and installs and updates plugins from here (D-071).
 | Plugin | What it does | What it needs |
 |---|---|---|
 | [`soundcloud`](soundcloud/) | Searches and plays SoundCloud, gives the tracks' covers | nothing |
-| [`ytmusic`](ytmusic/) | Searches YouTube Music, plays with yt-dlp, gives the songs' album art | yt-dlp (the engine downloads it and verifies its sha256) |
+| [`ytmusic`](ytmusic/) | Searches YouTube Music, plays with yt-dlp, gives the songs' album art and their lyrics, timed | yt-dlp (the engine downloads it and verifies its sha256) |
 
 Plugins are written in JavaScript and run in the QuickJS engine embedded in
 headshell: no Python, Node or other runtime is needed. Every plugin declares the
