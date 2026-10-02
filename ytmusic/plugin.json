@@ -1,10 +1,11 @@
 {
   "name": "ytmusic",
   "display_name": "YouTube Music",
-  "version": "0.6.0",
-  "api": 4,
+  "version": "0.7.0",
+  "api": 5,
   "artwork": true,
   "lyrics": true,
+  "video": false,
   "main": "main.js",
   "capabilities": ["search", "stream"],
   "permissions": {

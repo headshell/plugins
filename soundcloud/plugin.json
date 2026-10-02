@@ -1,10 +1,11 @@
 {
   "name": "soundcloud",
   "display_name": "SoundCloud",
-  "version": "0.4.0",
-  "api": 4,
+  "version": "0.5.0",
+  "api": 5,
   "artwork": true,
   "lyrics": false,
+  "video": false,
   "main": "main.js",
   "capabilities": ["search", "stream"],
   "permissions": {

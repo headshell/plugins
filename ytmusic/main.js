@@ -1,4 +1,4 @@
-// The YouTube Music provider plugin (api 4, D-048 → D-069 → D-076 → D-078).
+// The YouTube Music provider plugin (api 5, D-048 → D-069 → D-076 → D-078 → D-086).
 //
 // The same rules as the SoundCloud plugin: audio is never relayed (K3), and
 // nothing circumvents DRM (D-026). It moved from Python to JS in D-069, and now

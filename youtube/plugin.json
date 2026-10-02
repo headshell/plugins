@@ -1,0 +1,15 @@
+{
+  "name": "youtube",
+  "display_name": "YouTube",
+  "version": "0.1.0",
+  "api": 5,
+  "artwork": true,
+  "lyrics": false,
+  "video": true,
+  "main": "main.js",
+  "capabilities": ["search"],
+  "permissions": {
+    "net": ["music.youtube.com", "i.ytimg.com"]
+  },
+  "description": "Finds music videos on YouTube (InnerTube, YouTube Music's video search) and hands them to the app's official YouTube player (the IFrame embed on youtube-nocookie.com). Nothing is downloaded and no stream is resolved: YouTube plays the video itself, with its own ads and its own counting, and the player stays on screen while it plays — YouTube's rules (D-086). No yt-dlp. The cover is the video's own thumbnail from `i.ytimg.com`."
+}

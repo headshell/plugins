@@ -12,6 +12,7 @@ okur ve eklentileri buradan kurup günceller (D-071).
 |---|---|---|
 | [`soundcloud`](soundcloud/README.tr.md) | SoundCloud'da arar ve çalar | hiçbir şey |
 | [`ytmusic`](ytmusic/README.tr.md) | YouTube Music'te arar, yt-dlp ile çalar | yt-dlp (motor indirir, sha256 doğrular) |
+| [`youtube`](youtube/README.tr.md) | Müzik videolarını bulur; uygulama onları YouTube'un kendi oynatıcısında (resmi gömme) oynatır | hiçbir şey |
 
 Eklentiler JavaScript'le yazılır ve headshell'in içine gömülü QuickJS
 motorunda koşar: Python, Node ya da başka bir çalışma zamanı gerekmez. Her

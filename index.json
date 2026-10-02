@@ -4,7 +4,7 @@
   "plugins": [
     {
       "manifest": {
-        "api": 4,
+        "api": 5,
         "artwork": true,
         "capabilities": [
           "search",
@@ -22,24 +22,59 @@
             "*.sndcdn.com"
           ]
         },
-        "version": "0.4.0"
+        "version": "0.5.0",
+        "video": false
       },
       "files": [
         {
           "path": "plugin.json",
-          "url": "https://raw.githubusercontent.com/headshell/plugins/refs/tags/soundcloud-0.4.0/soundcloud/plugin.json",
-          "sha256": "6f8df5c150b28b4072174dc81a498b2ae44855a5acff264dd20f75fa29c1b753"
+          "url": "https://raw.githubusercontent.com/headshell/plugins/refs/tags/soundcloud-0.5.0/soundcloud/plugin.json",
+          "sha256": "f94920f4c81ce51542978a5896a47ef2de9b25785d5eed506b9f3078c5876854"
         },
         {
           "path": "main.js",
-          "url": "https://raw.githubusercontent.com/headshell/plugins/refs/tags/soundcloud-0.4.0/soundcloud/main.js",
-          "sha256": "40d8e151be03f32eccef5938f2d463672844a8431adcabd1095c9a2e8a0663e4"
+          "url": "https://raw.githubusercontent.com/headshell/plugins/refs/tags/soundcloud-0.5.0/soundcloud/main.js",
+          "sha256": "e64a90fe514e2089b1579d2155087e902622046c36abcb48e02d4bc23a44e452"
         }
       ]
     },
     {
       "manifest": {
-        "api": 4,
+        "api": 5,
+        "artwork": true,
+        "capabilities": [
+          "search"
+        ],
+        "description": "Finds music videos on YouTube (InnerTube, YouTube Music's video search) and hands them to the app's official YouTube player (the IFrame embed on youtube-nocookie.com). Nothing is downloaded and no stream is resolved: YouTube plays the video itself, with its own ads and its own counting, and the player stays on screen while it plays — YouTube's rules (D-086). No yt-dlp. The cover is the video's own thumbnail from `i.ytimg.com`.",
+        "display_name": "YouTube",
+        "lyrics": false,
+        "main": "main.js",
+        "name": "youtube",
+        "permissions": {
+          "net": [
+            "music.youtube.com",
+            "i.ytimg.com"
+          ]
+        },
+        "version": "0.1.0",
+        "video": true
+      },
+      "files": [
+        {
+          "path": "plugin.json",
+          "url": "https://raw.githubusercontent.com/headshell/plugins/refs/tags/youtube-0.1.0/youtube/plugin.json",
+          "sha256": "c0db2cdbedb83a5adb9da77490822b45756e596936681f2e1d29d2e6f1b20f0c"
+        },
+        {
+          "path": "main.js",
+          "url": "https://raw.githubusercontent.com/headshell/plugins/refs/tags/youtube-0.1.0/youtube/main.js",
+          "sha256": "cb32d6a1513116d1f634989f1a594c7c7f4285552f626cca045f64ffb17daf5f"
+        }
+      ]
+    },
+    {
+      "manifest": {
+        "api": 5,
         "artwork": true,
         "capabilities": [
           "search",
@@ -102,18 +137,19 @@
             "version": "2026.08.19"
           }
         ],
-        "version": "0.6.0"
+        "version": "0.7.0",
+        "video": false
       },
       "files": [
         {
           "path": "plugin.json",
-          "url": "https://raw.githubusercontent.com/headshell/plugins/refs/tags/ytmusic-0.6.0/ytmusic/plugin.json",
-          "sha256": "7c55d1647945d9f536f2e189fc7fa2007f27a348e99ce62a3a687231b92c01cc"
+          "url": "https://raw.githubusercontent.com/headshell/plugins/refs/tags/ytmusic-0.7.0/ytmusic/plugin.json",
+          "sha256": "9088d4fee7e6102c759abe5aaa55259d1d7dd8222704568ec239ded4a317fbff"
         },
         {
           "path": "main.js",
-          "url": "https://raw.githubusercontent.com/headshell/plugins/refs/tags/ytmusic-0.6.0/ytmusic/main.js",
-          "sha256": "cb84a35c8d27481646a2a1ac8930590dc6e19ea9b30bf9b1fb4c6dec67f2386d"
+          "url": "https://raw.githubusercontent.com/headshell/plugins/refs/tags/ytmusic-0.7.0/ytmusic/main.js",
+          "sha256": "d35d06b10c1d200ae9698e0c1438b678af3b1b25a80510511813b622f62d44e8"
         }
       ]
     }
