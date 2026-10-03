@@ -1,11 +1,12 @@
 {
   "name": "ytmusic",
   "display_name": "YouTube Music",
-  "version": "0.7.0",
-  "api": 5,
+  "version": "0.8.0",
+  "api": 6,
   "artwork": true,
   "lyrics": true,
   "video": false,
+  "related": true,
   "main": "main.js",
   "capabilities": ["search", "stream"],
   "permissions": {
@@ -55,5 +56,5 @@
       }
     }
   ],
-  "description": "Searches YouTube Music (InnerTube) and plays the m4a stream it resolves with yt-dlp. Gives the song's album art from InnerTube (`yt3`/`lh3.googleusercontent.com`), and its lyrics — timed line by line when YouTube Music has the timing. The engine installs yt-dlp: it downloads this platform's self-contained binary and verifies its hash (D-069); no Python is needed on the system. If a `cookies` secret is given, it's passed to yt-dlp as a cookie file — YouTube puts up a bot wall for data centre addresses (D-061). NOTE — yt-dlp isn't a script the engine jails but a separate program: its network traffic isn't limited by this plugin's permission list. There's no single-file release for Linux armv7 (`linux-arm`), and none at all for 32-bit Linux."
+  "description": "Searches YouTube Music (InnerTube) and plays the m4a stream it resolves with yt-dlp. Gives the song's album art from InnerTube (`yt3`/`lh3.googleusercontent.com`), its lyrics — timed line by line when YouTube Music has the timing — and its radio, the songs like it. The engine installs yt-dlp: it downloads this platform's self-contained binary and verifies its hash (D-069); no Python is needed on the system. If a `cookies` secret is given, it's passed to yt-dlp as a cookie file — YouTube puts up a bot wall for data centre addresses (D-061). NOTE — yt-dlp isn't a script the engine jails but a separate program: its network traffic isn't limited by this plugin's permission list. There's no single-file release for Linux armv7 (`linux-arm`), and none at all for 32-bit Linux."
 }

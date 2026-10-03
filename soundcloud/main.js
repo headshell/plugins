@@ -1,4 +1,4 @@
-// The SoundCloud provider plugin (api 5, D-069, D-076, D-078, D-086).
+// The SoundCloud provider plugin (api 6, D-069, D-076, D-078, D-086, D-087).
 //
 // Phase 2 §2.2's reference plugin; moved from Python to JS in D-069. Its job is
 // not to offer a catalog but to prove that the plugin contract can be written
@@ -16,7 +16,7 @@
 // `progressive` variant; 1% offer only HLS. We didn't write an HLS decoder; for
 // that 1% we return an explicit error — not a silent empty result (K9).
 
-const VERSION = "0.5.0";
+const VERSION = "0.6.0";
 const HOME_URL = "https://soundcloud.com/";
 const API_BASE = "https://api-v2.soundcloud.com";
 const HEADERS = { "User-Agent": `headshell-soundcloud/${VERSION}` };
@@ -213,6 +213,8 @@ function toTrack(track) {
     duration_ms: Math.trunc(Number(track.duration) || 0),
   };
   if (publisher.isrc) result.isrc = publisher.isrc;
+  // api 6: the uploader's genre, as written; the app folds it.
+  if (typeof track.genre === "string" && track.genre.trim() !== "") result.genres = [track.genre.trim()];
   return result;
 }
 
@@ -267,6 +269,33 @@ export function search(text, limit) {
   // K9: a dropped record is counted and reported, not silently swallowed.
   if (skipped > 0) host.log.warn(`${skipped} search records skipped because they aren't tracks`);
   return tracks;
+}
+
+// api 6 (D-087): SoundCloud's own "related tracks" for one of its tracks — what
+// its player queues after it. Only the track's id goes out.
+export function related(id, limit) {
+  const trackId = String(id ?? "").trim();
+  if (trackId === "") return [];
+  const size = Math.max(1, Math.min(Number(limit) || 20, 50));
+  let payload;
+  try {
+    payload = apiGet(`/tracks/${encodeURIComponent(trackId)}/related`, { limit: size });
+  } catch (err) {
+    // A track that's gone has nothing like it: an answer, not an error.
+    if (err instanceof StatusError && err.status === 404) return [];
+    throw err;
+  }
+  const tracks = [];
+  let skipped = 0;
+  for (const track of payload.collection ?? []) {
+    if (track.kind !== "track" || track.id === undefined || track.id === null || String(track.id) === trackId) {
+      skipped += 1;
+      continue;
+    }
+    tracks.push(toTrack(track));
+  }
+  if (skipped > 0) host.log.warn(`${skipped} related records skipped because they aren't other tracks`);
+  return tracks.slice(0, size);
 }
 
 export function resolve_source(id) {

@@ -1,11 +1,12 @@
 {
   "name": "youtube",
   "display_name": "YouTube",
-  "version": "0.1.0",
-  "api": 5,
+  "version": "0.2.0",
+  "api": 6,
   "artwork": true,
   "lyrics": false,
   "video": true,
+  "related": false,
   "main": "main.js",
   "capabilities": ["search"],
   "permissions": {

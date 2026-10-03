@@ -1,4 +1,4 @@
-// The YouTube Music provider plugin (api 5, D-048 → D-069 → D-076 → D-078 → D-086).
+// The YouTube Music provider plugin (api 6, D-048 → D-069 → D-076 → D-078 → D-086 → D-087).
 //
 // The same rules as the SoundCloud plugin: audio is never relayed (K3), and
 // nothing circumvents DRM (D-026). It moved from Python to JS in D-069, and now
@@ -22,6 +22,10 @@
 //
 // **Lyrics** (api 4) as well: the song's own, from its lyrics page — timed
 // line by line when YouTube Music has the timing.
+//
+// **Similar songs** (api 6) too: the song's own radio — the `next` endpoint
+// with the `RDAMVM<id>` playlist lists what YouTube Music would play after it.
+// Only the song's id goes out; the app's taste never reaches this plugin.
 
 //
 // ## Two traps, both measured
@@ -444,6 +448,62 @@ function lrcStamp(ms) {
 
 function runsText(runs) {
   return (runs ?? []).map((run) => run.text ?? "").join("");
+}
+
+// --- similar songs (api 6, D-087) ---------------------------------------------
+//
+// The song's radio: `next` with the playlist `RDAMVM` + id answers with a queue
+// panel of up to 50 songs, the seed first (measured 2026-10-03: "Alison" →
+// "When the Sun Hits", "Weird Fishes / Arpeggi", "when you sleep", …). Each
+// row's byline is `artist • album • year`.
+
+/** The queue panel's rows, in the panel's order. */
+function panelRows(node, out) {
+  if (Array.isArray(node)) {
+    for (const child of node) panelRows(child, out);
+  } else if (node !== null && typeof node === "object") {
+    if (node.playlistPanelVideoRenderer) {
+      out.push(node.playlistPanelVideoRenderer);
+      return out;
+    }
+    for (const child of Object.values(node)) panelRows(child, out);
+  }
+  return out;
+}
+
+/** A queue panel row as the contract's track, or `null` when it can't be one. */
+function panelToTrack(panel) {
+  const id = panel.videoId;
+  const title = runsText(panel.title?.runs).trim();
+  const groups = splitMetadataRuns(panel.longBylineText?.runs ?? panel.shortBylineText?.runs ?? []);
+  const artist = groups[0] ?? "";
+  if (!id || !title || !artist) return null;
+  const track = { id, artist, title, duration_ms: parseDurationMs(runsText(panel.lengthText?.runs)) ?? 0 };
+  if (groups[1] && !/^\d{4}$/.test(groups[1])) track.album = groups[1];
+  return track;
+}
+
+export function related(id, limit) {
+  const video = String(id ?? "").trim();
+  if (!video) return [];
+  const document = innertube(
+    INNERTUBE_NEXT_URL,
+    { videoId: video, playlistId: `RDAMVM${video}`, isAudioOnly: true },
+    "song radio",
+  );
+  const seen = new Set([video]);
+  const tracks = [];
+  let skipped = 0;
+  for (const panel of panelRows(document, [])) {
+    if (seen.has(panel.videoId)) continue;
+    seen.add(panel.videoId);
+    const track = panelToTrack(panel);
+    if (track) tracks.push(track);
+    else skipped += 1;
+    if (tracks.length >= limit) break;
+  }
+  if (skipped > 0) host.log.warn(`${skipped} radio rows could not be converted (missing ID/artist/title)`);
+  return tracks;
 }
 
 export function lyrics(id) {

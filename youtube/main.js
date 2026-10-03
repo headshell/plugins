@@ -1,4 +1,4 @@
-// The YouTube provider plugin (api 5, headshell D-086).
+// The YouTube provider plugin (api 6, headshell D-086, D-087 — it names no similar songs).
 //
 // It finds music videos and nothing else: the app plays them in YouTube's own
 // player — the official IFrame embed — so no stream is resolved, nothing is
