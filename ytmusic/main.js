@@ -1,4 +1,4 @@
-// The YouTube Music provider plugin (api 6, D-048 → D-069 → D-076 → D-078 → D-086 → D-087).
+// The YouTube Music provider plugin (api 6, D-048 → D-069 → D-076 → D-078 → D-086 → D-087 → D-088).
 //
 // The same rules as the SoundCloud plugin: audio is never relayed (K3), and
 // nothing circumvents DRM (D-026). It moved from Python to JS in D-069, and now
@@ -7,15 +7,24 @@
 // engine downloads yt-dlp's binary built for this platform, which carries its
 // own Python inside it.
 //
-// ## The division of labour: search from InnerTube, the stream from yt-dlp
+// ## The division of labour: search from InnerTube, the stream from InnerTube or yt-dlp
 //
-// Both were chosen by measuring (D-048):
+// All three were chosen by measuring (D-048, D-088):
 //
 // - **Search** goes to YouTube Music's own InnerTube endpoint. yt-dlp's search
 //   output gives only `title` + `id` — no artist, no duration — and K6's fuzzy
 //   match link doesn't work without them.
-// - **The stream** goes to yt-dlp. YouTube's signature/nsig work isn't this
-//   project's job; when it breaks, yt-dlp gets updated, not us.
+// - **The stream** is asked of InnerTube's `player` endpoint first, as the
+//   visionOS client (the fast path, D-088). That client needs no JS player: its
+//   addresses come with neither a signature to solve nor an `n` parameter.
+//   yt-dlp itself does exactly this one call when it has no JS runtime — but it
+//   took 4.5–5.5 s around it (1.1 s of it only to unpack itself), and the call
+//   alone takes 0.2–0.5 s.
+// - **yt-dlp stays as the fallback.** When the fast path fails for any reason —
+//   YouTube retires the client, a bot wall a fresh visitor id doesn't pass, a
+//   video it doesn't serve — yt-dlp is asked, and its words have the last say.
+//   YouTube's signature/nsig work isn't this project's job; when it breaks,
+//   yt-dlp gets updated, not us.
 //
 // **Covers** (api 3) come from InnerTube too: the `next` endpoint gives a song's
 // square album art, up to 544 px, on `yt3.googleusercontent.com`.
@@ -62,6 +71,31 @@ const BROWSER_UA =
 // ~130 kbps), 139 (~49 kbps) is taken; if there's neither, an error is returned —
 // opus is never picked silently.
 const AUDIO_FORMAT = "140/139/bestaudio[ext=m4a]";
+// The same choice for the fast path, which sees YouTube's own format numbers.
+const AUDIO_ITAGS = [140, 139];
+
+// The fast path's client (D-088): the one yt-dlp 2026.08.19 uses when it has no
+// JS runtime (`_DEFAULT_JSLESS_CLIENTS`), with the same context it sends. When
+// YouTube retires it, the fast path fails and yt-dlp carries on — take the new
+// values from yt-dlp's `INNERTUBE_CLIENTS` then.
+const INNERTUBE_PLAYER_URL = "https://music.youtube.com/youtubei/v1/player?prettyPrint=false";
+const FAST_UA =
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 15_7_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15";
+const FAST_CLIENT = {
+  clientName: "VISIONOS",
+  clientVersion: "1.02",
+  deviceMake: "Apple",
+  deviceModel: "RealityDevice17,1",
+  osName: "visionOS",
+  osVersion: "26.5.23O471",
+  userAgent: FAST_UA,
+  hl: "en",
+  gl: "US",
+};
+const FAST_CLIENT_NUMBER = "101";
+
+// Where the visitor id is kept between sessions (`host.storage`).
+const VISITOR_KEY = "visitor_data";
 
 // The call's budget is 20 s. yt-dlp can spend 8-10 s solving signatures, and the
 // self-contained binary unpacks itself into a temporary directory on every start;
@@ -212,6 +246,96 @@ function rowToTrack(row) {
   return track;
 }
 
+// --- The fast path (D-088) ---------------------------------------------------------
+
+// The visitor id the fast path sends. Without one, YouTube put up its bot wall
+// for 9 tracks out of 9; with the one its own answer hands back, 9 out of 9
+// passed (measured from a home address, D-088). Kept in the module for the
+// session and in `host.storage` across sessions; `undefined` until it's read.
+let visitorData;
+
+function knownVisitor() {
+  if (visitorData === undefined) visitorData = host.storage.get(VISITOR_KEY);
+  return visitorData;
+}
+
+function rememberVisitor(value) {
+  visitorData = value;
+  host.storage.set(VISITOR_KEY, value);
+}
+
+function forgetVisitor() {
+  visitorData = null;
+  host.storage.remove(VISITOR_KEY);
+}
+
+/** One call to InnerTube's `player` endpoint as the fast path's client. */
+function fastPlayer(video, visitor) {
+  const client = { ...FAST_CLIENT };
+  const headers = {
+    "Content-Type": "application/json",
+    "User-Agent": FAST_UA,
+    Origin: "https://music.youtube.com",
+    "X-YouTube-Client-Name": FAST_CLIENT_NUMBER,
+    "X-YouTube-Client-Version": FAST_CLIENT.clientVersion,
+  };
+  if (visitor) {
+    client.visitorData = visitor;
+    headers["X-Goog-Visitor-Id"] = visitor;
+  }
+  const body = JSON.stringify({
+    context: { client },
+    videoId: video,
+    contentCheckOk: true,
+    racyCheckOk: true,
+  });
+  const res = host.http.post(INNERTUBE_PLAYER_URL, body, headers);
+  if (!res.ok) throw new Error(`the player endpoint returned ${res.status}`);
+  try {
+    return JSON.parse(res.body);
+  } catch (err) {
+    throw new Error(`the player endpoint gave an answer that isn't JSON: ${err.message}`);
+  }
+}
+
+/**
+ * Resolves a track's address without yt-dlp: one call, or two when the bot
+ * wall hands back a fresh visitor id. Otherwise it throws with YouTube's own
+ * reason, and the caller carries that reason into yt-dlp's attempt (K9).
+ */
+function fastResolve(video) {
+  const visitor = knownVisitor();
+  let answer = fastPlayer(video, visitor);
+  const fresh = answer.responseContext?.visitorData;
+  if (answer.playabilityStatus?.status === "LOGIN_REQUIRED" && fresh && fresh !== visitor) {
+    // The bot wall's answer carries a visitor id of its own; asked again with
+    // it, the wall let every measured track through.
+    rememberVisitor(fresh);
+    answer = fastPlayer(video, fresh);
+  } else if (!visitor && fresh) {
+    rememberVisitor(fresh);
+  }
+
+  const status = answer.playabilityStatus?.status ?? "no status";
+  if (status !== "OK") {
+    // A visitor id the wall still stops is no use next time either.
+    if (status === "LOGIN_REQUIRED") forgetVisitor();
+    const reason = answer.playabilityStatus?.reason;
+    throw new Error(reason ? `${status}: ${reason}` : status);
+  }
+  const formats = answer.streamingData?.adaptiveFormats ?? [];
+  for (const itag of AUDIO_ITAGS) {
+    const format = formats.find((f) => f.itag === itag && typeof f.url === "string");
+    if (format) return format.url;
+  }
+  // A format without an address carries a signature to solve: the client lost
+  // what made it the fast path, and that work is yt-dlp's, not ours.
+  const audio = formats
+    .filter((f) => String(f.mimeType ?? "").startsWith("audio/"))
+    .map((f) => (f.url ? `${f.itag}` : `${f.itag} without an address`));
+  throw new Error(`no m4a audio with an address (audio formats: ${audio.join(", ") || "none"})`);
+}
+
 // --- yt-dlp ------------------------------------------------------------------
 
 /**
@@ -269,19 +393,32 @@ function pickAudio(document) {
 // --- the contract ------------------------------------------------------------------
 
 /**
- * Probes two independent things separately: the search endpoint and yt-dlp. A
- * single "doesn't work" answer would hide which of them broke (K9).
+ * Probes three independent things separately: the search endpoint, the fast
+ * path and yt-dlp. A single "doesn't work" answer would hide which of them
+ * broke (K9). The fast path failing doesn't make the plugin unreachable —
+ * yt-dlp is asked instead, only slower — so it's a note, not a verdict.
  */
 export function health() {
   const notes = [];
   let reachable = true;
 
+  let probe = null;
   try {
     const rows = innertubeSearch("a", 1);
     notes.push(`the InnerTube search returned ${rows.length} rows`);
+    probe = rows.length > 0 ? videoId(rows[0]) : null;
   } catch (err) {
     reachable = false;
     notes.push(`search: ${err.message}`);
+  }
+
+  if (probe !== null) {
+    try {
+      fastResolve(probe);
+      notes.push("the fast path resolved a stream");
+    } catch (err) {
+      notes.push(`the fast path: ${err.message} (yt-dlp is asked instead)`);
+    }
   }
 
   try {
@@ -545,16 +682,34 @@ export function resolve_source(id) {
   const video = String(id ?? "").trim();
   if (video === "") throw new Error("the track ID is empty");
 
-  const chosen = pickAudio(ytdlpJson(video));
-  if (chosen === null) {
-    // "I can't play it" and "it doesn't exist" are different diagnoses (K9).
-    throw new Error(
-      `yt-dlp gave no audio format we can decode for this track (asked for: ${AUDIO_FORMAT})`,
-    );
+  let url = null;
+  let fastFailure = null;
+  try {
+    url = fastResolve(video);
+  } catch (err) {
+    fastFailure = err.message;
+    host.log.info(`the fast path did not resolve ${video} (${fastFailure}); asking yt-dlp`);
+  }
+
+  if (url === null) {
+    let chosen;
+    try {
+      chosen = pickAudio(ytdlpJson(video));
+    } catch (err) {
+      // Both said no: yt-dlp's words first (D-048), the fast path's after them.
+      throw new Error(`${err.message} (the fast path: ${fastFailure})`);
+    }
+    if (chosen === null) {
+      // "I can't play it" and "it doesn't exist" are different diagnoses (K9).
+      throw new Error(
+        `yt-dlp gave no audio format we can decode for this track (asked for: ${AUDIO_FORMAT}; the fast path: ${fastFailure})`,
+      );
+    }
+    url = chosen.url;
   }
   return {
     kind: "http_stream",
-    url: chosen.url,
+    url,
     // Measured (D-048): without this header the same address gives 32 KB/s, with
     // it 8 MB/s. Not decryption — a standard range request the server answers
     // with 206.

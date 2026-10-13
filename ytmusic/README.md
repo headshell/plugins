@@ -1,7 +1,9 @@
 # YouTube Music
 
-Searches YouTube Music (InnerTube) and plays the m4a stream it resolves with
-yt-dlp.
+Searches YouTube Music (InnerTube) and plays its m4a stream. The address comes
+from InnerTube's own `player` endpoint, asked as the visionOS client — one call,
+0.2–0.5 s (the fast path, headshell D-088). When that fails for any reason, yt-dlp
+resolves it as before, and its words have the last say.
 
 **You don't install yt-dlp, and no Python is needed** — the plugin declares yt-dlp
 per platform in its manifest, and the engine downloads your platform's
@@ -10,7 +12,7 @@ self-contained binary (~40 MB) and verifies its sha256 (headshell D-069).
 ```bash
 headshell plugin install ytmusic    # downloads the plugin and yt-dlp, verifies both
 headshell plugin approve ytmusic    # shows the permissions and what the engine downloads
-headshell provider test ytmusic     # should write "available" + the yt-dlp version
+headshell provider test ytmusic     # "available", whether the fast path resolved, the yt-dlp version
 headshell play "nujabes aruarian dance"
 ```
 
@@ -55,7 +57,15 @@ writes separately that the tool changed.
 When updating, take **every platform's** hash from the `SHA2-256SUMS` file yt-dlp
 publishes, and raise the plugin's `version`.
 
-**Known limits**, all three measured:
+**Known limits**, all measured:
+
+- **The fast path leans on a client YouTube can retire.** The visionOS client is
+  the one yt-dlp 2026.08.19 itself uses when it has no JS runtime; its addresses
+  need no signature solving. Without a visitor id YouTube put up its bot wall for
+  9 tracks out of 9 — the wall's own answer carries one, and asked again with it,
+  9 out of 9 passed. The id is kept in the plugin's storage. If the client goes,
+  every track falls back to yt-dlp: slower (4.5–5.5 s), not broken, and
+  `provider test` says so.
 
 - **The audio is m4a (AAC-LC, ~130 kbps).** headshell's symphonia has neither an
   opus decoder nor a webm container; lower quality that plays was chosen over

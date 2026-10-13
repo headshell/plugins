@@ -82,7 +82,7 @@
           "search",
           "stream"
         ],
-        "description": "Searches YouTube Music (InnerTube) and plays the m4a stream it resolves with yt-dlp. Gives the song's album art from InnerTube (`yt3`/`lh3.googleusercontent.com`), its lyrics — timed line by line when YouTube Music has the timing — and its radio, the songs like it. The engine installs yt-dlp: it downloads this platform's self-contained binary and verifies its hash (D-069); no Python is needed on the system. If a `cookies` secret is given, it's passed to yt-dlp as a cookie file — YouTube puts up a bot wall for data centre addresses (D-061). NOTE — yt-dlp isn't a script the engine jails but a separate program: its network traffic isn't limited by this plugin's permission list. There's no single-file release for Linux armv7 (`linux-arm`), and none at all for 32-bit Linux.",
+        "description": "Searches YouTube Music (InnerTube) and plays its m4a stream: the address comes from InnerTube's own player endpoint in a fraction of a second (the fast path, headshell D-088), and from yt-dlp when that fails. Gives the song's album art from InnerTube (`yt3`/`lh3.googleusercontent.com`), its lyrics — timed line by line when YouTube Music has the timing — and its radio, the songs like it. The engine installs yt-dlp: it downloads this platform's self-contained binary and verifies its hash (D-069); no Python is needed on the system. If a `cookies` secret is given, it's passed to yt-dlp as a cookie file — YouTube puts up a bot wall for data centre addresses (D-061). NOTE — yt-dlp isn't a script the engine jails but a separate program: its network traffic isn't limited by this plugin's permission list. There's no single-file release for Linux armv7 (`linux-arm`), and none at all for 32-bit Linux.",
         "display_name": "YouTube Music",
         "lyrics": true,
         "main": "main.js",
@@ -140,19 +140,19 @@
             "version": "2026.08.19"
           }
         ],
-        "version": "0.8.0",
+        "version": "0.9.0",
         "video": false
       },
       "files": [
         {
           "path": "plugin.json",
-          "url": "https://raw.githubusercontent.com/headshell/plugins/refs/tags/ytmusic-0.8.0/ytmusic/plugin.json",
-          "sha256": "42884af364634f9b563c50cf77c6de26eef8ab20095c9212ce50a6638e009b12"
+          "url": "https://raw.githubusercontent.com/headshell/plugins/refs/tags/ytmusic-0.9.0/ytmusic/plugin.json",
+          "sha256": "563fbd1a559c7e24102bc2956cd86d63d0c7dc2429008d306e9dc14baf8a5a04"
         },
         {
           "path": "main.js",
-          "url": "https://raw.githubusercontent.com/headshell/plugins/refs/tags/ytmusic-0.8.0/ytmusic/main.js",
-          "sha256": "2ec0b02666feb2b27f574c57c4669db1adb69c710f88f5042fde608d3dde0864"
+          "url": "https://raw.githubusercontent.com/headshell/plugins/refs/tags/ytmusic-0.9.0/ytmusic/main.js",
+          "sha256": "85922bdf9f1025288fb3fe3e70c33fabf2bfa969230f7ef7effebad657b450aa"
         }
       ]
     }
