@@ -1,4 +1,4 @@
-// The SoundCloud provider plugin (api 6, D-069, D-076, D-078, D-086, D-087).
+// The SoundCloud provider plugin (api 6, D-069, D-076, D-078, D-086, D-087, D-091).
 //
 // Phase 2 §2.2's reference plugin; moved from Python to JS in D-069. Its job is
 // not to offer a catalog but to prove that the plugin contract can be written
@@ -8,15 +8,18 @@
 // The scope is deliberately narrow — `search` + `stream` + the track's cover
 // (api 3). No lyrics (api 4): SoundCloud keeps none, so the manifest says
 // `"lyrics": false` and the app asks LRCLIB for them itself. Audio is never relayed (K3): the resolved address is handed to the
-// core, and the core fetches the stream. Nothing circumvents DRM (D-026):
-// SoundCloud's own `progressive` MP3 transcoding returns a signed address, and
-// we pass it on as it is.
+// core, and the core fetches the stream. Nothing circumvents DRM (D-026): a
+// transcoding resolves to a signed address, and we pass it on as it is.
 //
-// Measurement (2026-09-01, a sample of 200 tracks): 99% of the tracks have a
-// `progressive` variant; 1% offer only HLS. We didn't write an HLS decoder; for
-// that 1% we return an explicit error — not a silent empty result (K9).
+// Measurement (2026-09-01, a sample of 200 tracks): 99% of the tracks had a
+// `progressive` MP3 variant. By 2026-10-15 none had (20 of 20 searched): every
+// track is HLS — AAC in MP4 fragments (`hls`, `audio/mp4`), and for some only
+// an encrypted variant (`cbc-`/`ctr-encrypted-hls`). The core plays an
+// unencrypted HLS playlist itself (headshell D-091); so a progressive variant
+// is still taken first, then the best unencrypted AAC one. An encrypted-only
+// track is refused with its reason — DRM is never opened (D-026).
 
-const VERSION = "0.6.0";
+const VERSION = "0.7.0";
 const HOME_URL = "https://soundcloud.com/";
 const API_BASE = "https://api-v2.soundcloud.com";
 const HEADERS = { "User-Agent": `headshell-soundcloud/${VERSION}` };
@@ -218,14 +221,33 @@ function toTrack(track) {
   return result;
 }
 
+/** HLS qualities, best first; one not named here comes after them. */
+const QUALITY_ORDER = ["hq", "sq", "lq"];
+
 /**
- * The resolution address of the progressive (plain HTTP) MP3 transcoding. The HLS
- * variants are skipped on purpose: the core expects a plain stream.
+ * The transcoding to play: a progressive (plain HTTP) one if the track still
+ * has it, otherwise the best unencrypted HLS one of AAC in MP4 fragments — the
+ * core plays its playlist (headshell D-091). `{ none: reason }` when there is
+ * nothing the app plays: encrypted only (D-026), or formats it doesn't read.
  */
-function progressiveUrl(track) {
+function pickTranscoding(track) {
   const transcodings = track.media?.transcodings ?? [];
   const progressive = transcodings.find((t) => t.format?.protocol === "progressive");
-  return progressive?.url ?? null;
+  if (progressive?.url) return { url: progressive.url };
+  const rank = (t) => {
+    const index = QUALITY_ORDER.indexOf(t.quality);
+    return index === -1 ? QUALITY_ORDER.length : index;
+  };
+  const aac = transcodings
+    .filter((t) => t.format?.protocol === "hls" && String(t.format?.mime_type ?? "").startsWith("audio/mp4") && t.url)
+    .sort((a, b) => rank(a) - rank(b));
+  if (aac.length > 0) return { url: aac[0].url };
+  const protocols = [...new Set(transcodings.map((t) => t.format?.protocol ?? "?"))];
+  if (protocols.length > 0 && protocols.every((p) => p.includes("encrypted"))) {
+    return { none: "this track is only offered encrypted (DRM); headshell doesn't open DRM" };
+  }
+  const offered = transcodings.map((t) => `${t.format?.protocol ?? "?"} ${t.format?.mime_type ?? "?"}`);
+  return { none: `SoundCloud offers no stream the app plays for this track (${offered.join(", ") || "none"})` };
 }
 
 // --- the contract ------------------------------------------------------------------
@@ -312,20 +334,18 @@ export function resolve_source(id) {
   }
   if (track.streamable === false || track.policy === "BLOCK") return null;
 
-  const transcoding = progressiveUrl(track);
-  if (!transcoding) {
-    // "I can't play it" and "it doesn't exist" are different diagnoses (K9). We
-    // measured it: ~1% of the tracks are like this.
-    throw new Error(
-      "this track offers only HLS; the plugin doesn't decode HLS (~1% of the tracks are like this)",
-    );
-  }
+  const picked = pickTranscoding(track);
+  // "I can't play it" and "it doesn't exist" are different diagnoses (K9).
+  if (picked.none) throw new Error(picked.none);
 
-  const resolved = getJson(`${transcoding}?${query({ client_id: resolveClientId() })}`);
+  const params = { client_id: resolveClientId() };
+  if (track.track_authorization) params.track_authorization = track.track_authorization;
+  const resolved = getJson(`${picked.url}?${query(params)}`);
   if (!resolved.url) throw new Error("SoundCloud returned no stream address");
 
   // The address is signed and time-limited — it isn't cached; it's resolved
-  // again on every play.
+  // again on every play. An HLS one is a playlist (`….m3u8`), which the core
+  // reads.
   return { kind: "http_stream", url: resolved.url, headers: [] };
 }
 

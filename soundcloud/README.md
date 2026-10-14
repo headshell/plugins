@@ -30,8 +30,10 @@ the app asks LRCLIB for a track's lyrics itself (headshell D-078).
 
 **Known limits**, both deliberate:
 
-- **`progressive` (plain HTTP MP3) only.** Measured: 99% of the tracks have it. The
-  remaining 1% offer only HLS and get an explicit error.
+- **HLS since 0.7.0.** SoundCloud dropped its plain (`progressive`) streams in
+  October 2026: every track measured came as HLS — AAC in MP4 fragments, which
+  the app plays itself (headshell D-091). A track offered **only encrypted**
+  (DRM) is refused with that reason: headshell never opens DRM (D-026).
 - **Tracks labelled `[preview]` are 30 seconds long.** SoundCloud's `SNIP` policy;
   the full track needs a subscription.
 

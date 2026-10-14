@@ -10,7 +10,7 @@
           "search",
           "stream"
         ],
-        "description": "Searches and plays SoundCloud. Takes the client_id from the secret store, and otherwise discovers it itself. Gives the track's cover and its related tracks. `*.sndcdn.com`: the web client's JS assets (a-v2), the audio stream (cf-media) and the covers (i1) are under this domain.",
+        "description": "Searches and plays SoundCloud. Takes the client_id from the secret store, and otherwise discovers it itself. Gives the track's cover and its related tracks. `*.sndcdn.com`: the web client's JS assets (a-v2), the old plain audio stream (cf-media) and the covers (i1) are under this domain; `playback.media-streaming.soundcloud.cloud` is where the HLS streams the app now plays live.",
         "display_name": "SoundCloud",
         "lyrics": false,
         "main": "main.js",
@@ -19,23 +19,24 @@
           "net": [
             "soundcloud.com",
             "api-v2.soundcloud.com",
-            "*.sndcdn.com"
+            "*.sndcdn.com",
+            "playback.media-streaming.soundcloud.cloud"
           ]
         },
         "related": true,
-        "version": "0.6.0",
+        "version": "0.7.0",
         "video": false
       },
       "files": [
         {
           "path": "plugin.json",
-          "url": "https://raw.githubusercontent.com/headshell/plugins/refs/tags/soundcloud-0.6.0/soundcloud/plugin.json",
-          "sha256": "c64d418466855064f1f0f503c8f1592bb2547f53e1d697f781a4b867c5086f9f"
+          "url": "https://raw.githubusercontent.com/headshell/plugins/refs/tags/soundcloud-0.7.0/soundcloud/plugin.json",
+          "sha256": "93d1f33a0bf40537cf4de992a239aef59e9433eb935ddbbad64a78fad72d06ae"
         },
         {
           "path": "main.js",
-          "url": "https://raw.githubusercontent.com/headshell/plugins/refs/tags/soundcloud-0.6.0/soundcloud/main.js",
-          "sha256": "afb35cf82dc6c0fbcc2c892208ee2b9c15c1a26bcc4c0cad12ac629ba067a83e"
+          "url": "https://raw.githubusercontent.com/headshell/plugins/refs/tags/soundcloud-0.7.0/soundcloud/main.js",
+          "sha256": "157aeffa0ec63de7d16733c14559a3807e6385ffa5fec24ca4a63d638ca7f24c"
         }
       ]
     },
