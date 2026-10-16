@@ -1,16 +1,17 @@
 {
   "name": "youtube",
   "display_name": "YouTube",
-  "version": "0.2.0",
-  "api": 6,
+  "version": "0.3.0",
+  "api": 7,
   "artwork": true,
   "lyrics": false,
   "video": true,
   "related": false,
+  "links": [],
   "main": "main.js",
   "capabilities": ["search"],
   "permissions": {
     "net": ["music.youtube.com", "i.ytimg.com"]
   },
-  "description": "Finds music videos on YouTube (InnerTube, YouTube Music's video search) and hands them to the app's official YouTube player (the IFrame embed on youtube-nocookie.com). Nothing is downloaded and no stream is resolved: YouTube plays the video itself, with its own ads and its own counting, and the player stays on screen while it plays — YouTube's rules (D-086). No yt-dlp. The cover is the video's own thumbnail from `i.ytimg.com`."
+  "description": "Finds music videos on YouTube (InnerTube, YouTube Music's video search) and hands them to the app's official YouTube player (the IFrame embed on youtube-nocookie.com). Nothing is downloaded and no stream is resolved: YouTube plays the video itself, with its own ads and its own counting, and the player stays on screen while it plays — YouTube's rules (D-086). No yt-dlp. The cover is the video's own thumbnail from `i.ytimg.com`. The official video is taken over the artist's audio upload: YouTube's own search, at the same address, gives the uploads' titles; an upload that is only the song's sound (audio, lyrics, a visualizer, an art track) is not offered as its video (D-096)."
 }

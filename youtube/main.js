@@ -1,4 +1,4 @@
-// The YouTube provider plugin (api 6, headshell D-086, D-087 — it names no similar songs).
+// The YouTube provider plugin (api 7, headshell D-086, D-087 — it names no similar songs; D-095 — it opens no links yet: a YouTube link plays through ytmusic; D-096 — the official video, not the audio upload).
 //
 // It finds music videos and nothing else: the app plays them in YouTube's own
 // player — the official IFrame embed — so no stream is resolved, nothing is
@@ -18,6 +18,21 @@
 // Video) feat. Pharrell Williams`. The artist prefix and the "official video"
 // labels are taken off, so the app's matching compares songs with songs. What
 // is left is a guess, and the app weighs it as one.
+//
+// ## Which upload is the video (headshell D-096)
+//
+// YouTube Music's rows don't tell an official video from the artist's audio
+// upload — a still picture of the cover: both come as "official", titled the
+// song's name alone, and the audio one is as long as the song. Measured
+// 2026-10-15: of 27 songs whose video was found, 3 showed the cover (Daft Punk
+// "(Official Audio)", Tame Impala "(Audio)", Ezhel), and Queen's video came
+// titled "Live At Wembley Stadium" and was not taken for the song. The upload's
+// own title says which — `… (Official Video)`, `… (Audio)` — and YouTube's own
+// search gives it, through the same address. So the search asks both: YouTube
+// Music for the rows, YouTube for their titles. An upload whose title says it
+// is the sound (audio, lyrics, a visualizer) is left out, and so is a song's
+// "art track": a still picture is not a video — the app says there is none.
+// One whose title says it is the official video comes first.
 
 const INNERTUBE_URL = "https://music.youtube.com/youtubei/v1/search";
 
@@ -27,10 +42,16 @@ const INNERTUBE_CLIENT = {
   hl: "en",
   gl: "US",
 };
-// The search filters. Videos first; when none come, songs — a song row's id is
-// a video too (its "art track"), which the player plays as well.
+// The search filter: videos.
 const VIDEOS_FILTER = "EgWKAQIQAWoKEAoQCRADEAQQBQ==";
-const SONGS_FILTER = "EgWKAQIIAWoKEAoQCRADEAQQBQ==";
+// YouTube's own client, asked for the uploads' titles (D-096) — at the same
+// address: InnerTube answers each client there.
+const WEB_CLIENT = {
+  clientName: "WEB",
+  clientVersion: "2.20251006.01.00",
+  hl: "en",
+  gl: "US",
+};
 
 const BROWSER_UA =
   "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36";
@@ -41,17 +62,24 @@ const DURATION_PATTERN = /^(?:(\d+):)?(\d{1,2}):(\d{2})$/;
 const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
 // The labels a video's title carries that a song's does not.
 const VIDEO_LABELS =
-  /\s*[([](?:official\s+)?(?:music\s+|lyrics?\s+|hd\s+|4k\s+)?(?:video|audio|visuali[sz]er|mv|clip|lyrics?)(?:\s+(?:hd|4k))?[)\]]/gi;
-const PLAIN_LABELS = /\s*[([](?:hd|4k|hq|remastered(?:\s+\d{4})?)[)\]]/gi;
+  /\s*[([](?:official\s+)?(?:music\s+|lyrics?\s+|hd\s+|4k\s+)?(?:video|audio|visuali[sz]er|mv|clip|lyrics?)\b[^)\]]*[)\]]/gi;
+const PLAIN_LABELS = /\s*[([](?:hd|4k|hq|remaster(?:ed)?)\b[^)\]]*[)\]]/gi;
+// An upload's title that says it is the song's sound, not its video: a still
+// picture, scrolling words (D-096).
+const NOT_A_VIDEO =
+  /[([][^)\]]*\b(?:audio|lyrics?|visuali[sz]er|sözleri|karaoke|instrumental|sped\s*up|slowed|nightcore)\b[^)\]]*[)\]]|\bofficial\s+audio\b/i;
+// An upload's title that says it is the song's video.
+const OFFICIAL_VIDEO =
+  /\bofficial\s+(?:music\s+)?video\b|\bofficial\s+mv\b|\bmusic\s+video\b|[([]\s*(?:mv|video)\s*[)\]]|\bvideo\s*klip\b|\bvideoclip\b/i;
 
 // --- InnerTube -----------------------------------------------------------------
 
 function innertubeSearch(text, filter) {
-  const payload = JSON.stringify({
-    context: { client: { ...INNERTUBE_CLIENT } },
-    query: text,
-    params: filter,
-  });
+  return collectRows(innertubePost({ ...INNERTUBE_CLIENT }, { query: text, params: filter }));
+}
+
+function innertubePost(client, body) {
+  const payload = JSON.stringify({ context: { client }, ...body });
   let res;
   try {
     res = host.http.post(INNERTUBE_URL, payload, {
@@ -65,13 +93,43 @@ function innertubeSearch(text, filter) {
   if (!res.ok) {
     throw new Error(`the YouTube search returned ${res.status}; the InnerTube surface may have changed`);
   }
-  let document;
   try {
-    document = JSON.parse(res.body);
+    return JSON.parse(res.body);
   } catch (err) {
     throw new Error(`YouTube gave an answer that isn't JSON: ${err.message}`);
   }
-  return collectRows(document);
+}
+
+/** Every value under `key` in the tree, in document order. */
+function findAll(node, key, out = []) {
+  if (Array.isArray(node)) {
+    for (const child of node) findAll(child, key, out);
+  } else if (node !== null && typeof node === "object") {
+    if (node[key] !== undefined) out.push(node[key]);
+    for (const child of Object.values(node)) findAll(child, key, out);
+  }
+  return out;
+}
+
+/**
+ * The uploads' own titles for `text`, from YouTube's search: video id → title
+ * (D-096). It only orders and sorts out YouTube Music's rows, so when it
+ * fails the rows still come — the failure goes to the log.
+ */
+function uploadTitles(text) {
+  const titles = new Map();
+  let document;
+  try {
+    document = innertubePost({ ...WEB_CLIENT }, { query: text });
+  } catch (err) {
+    host.log.warn(`the uploads' titles could not be asked (${err.message}); the videos are not sorted out`);
+    return titles;
+  }
+  for (const renderer of findAll(document, "videoRenderer")) {
+    const title = (renderer.title?.runs ?? []).map((run) => run.text ?? "").join("").trim();
+    if (renderer.videoId && title) titles.set(renderer.videoId, title);
+  }
+  return titles;
 }
 
 /**
@@ -142,12 +200,19 @@ function songTitle(title, artist) {
   const dash = text.search(/\s[-–—]\s/);
   if (dash > 0) {
     const before = text.slice(0, dash).trim().toLowerCase();
+    const after = text.slice(dash + 3).trim().toLowerCase();
     const who = artist.trim().toLowerCase();
-    if (who !== "" && (before === who || before.includes(who) || who.includes(before))) {
-      text = text.slice(dash + 3).trim();
-    }
+    const isArtist = (part) => who !== "" && part !== "" && (part === who || part.includes(who) || who.includes(part));
+    if (isArtist(before)) text = text.slice(dash + 3).trim();
+    // `Numb – Linkin Park`: the artist after the dash.
+    else if (isArtist(after)) text = text.slice(0, dash).trim();
   }
   return text === "" ? title.trim() : text;
+}
+
+/** The row's kind as YouTube Music files it: `MUSIC_VIDEO_TYPE_OMV`, `…_ATV`… */
+function videoType(row) {
+  return findAll(row, "musicVideoType")[0] ?? null;
 }
 
 /** A row in the contract's shape, or `null` — the caller counts those (K9). */
@@ -183,12 +248,44 @@ function toTracks(rows) {
   for (const row of rows) {
     const track = rowToTrack(row);
     if (track === null) skipped += 1;
-    else tracks.push(track);
+    else tracks.push({ track, type: videoType(row) });
   }
   if (skipped > 0) {
     host.log.warn(`${skipped} search rows could not be converted (missing ID/artist/title)`);
   }
   return tracks;
+}
+
+/**
+ * The videos among the rows, the official ones first (D-096): an upload whose
+ * own title says it is the sound — or a song's art track — is left out and
+ * counted. A row YouTube Music titled otherwise than its upload ("Live At
+ * Wembley Stadium" on the official video) gets the upload's title.
+ */
+function videosOnly(rows, titles) {
+  const official = [];
+  const others = [];
+  let notVideos = 0;
+  for (const { track, type } of rows) {
+    const own = titles.get(track.id) ?? null;
+    const label = own ?? track.title;
+    if (type === "MUSIC_VIDEO_TYPE_ATV" || NOT_A_VIDEO.test(label)) {
+      notVideos += 1;
+      continue;
+    }
+    if (own !== null && OFFICIAL_VIDEO.test(own)) {
+      // Only a label YouTube Music added is taken off: its title is the
+      // upload's with a bracket more.
+      const fromUpload = songTitle(own, track.artist);
+      const added = track.title.startsWith(fromUpload) ? track.title.slice(fromUpload.length).trim() : "";
+      if (/^[([]/.test(added)) track.title = fromUpload;
+      official.push(track);
+    } else {
+      others.push(track);
+    }
+  }
+  if (notVideos > 0) host.log.info(`${notVideos} rows were the song's sound, not its video, and were left out`);
+  return [...official, ...others];
 }
 
 // --- the contract ------------------------------------------------------------------
@@ -207,12 +304,11 @@ export function search(text, limit) {
   if (q === "") return [];
   const size = Math.max(1, Math.min(Number(limit) || 20, 100));
 
-  let tracks = toTracks(innertubeSearch(q, VIDEOS_FILTER));
-  if (tracks.length === 0) {
-    host.log.info(`no video rows came for '${q}'; asking for songs`);
-    tracks = toTracks(innertubeSearch(q, SONGS_FILTER));
-  }
-  return tracks.slice(0, size);
+  const rows = toTracks(innertubeSearch(q, VIDEOS_FILTER));
+  if (rows.length === 0) return [];
+  // No video found is an answer: a song's still picture is not offered
+  // instead (D-096).
+  return videosOnly(rows, uploadTitles(q)).slice(0, size);
 }
 
 /**

@@ -1,4 +1,4 @@
-// The YouTube Music provider plugin (api 6, D-048 → D-069 → D-076 → D-078 → D-086 → D-087 → D-088).
+// The YouTube Music provider plugin (api 7, D-048 → D-069 → D-076 → D-078 → D-086 → D-087 → D-088 → D-095).
 //
 // The same rules as the SoundCloud plugin: audio is never relayed (K3), and
 // nothing circumvents DRM (D-026). It moved from Python to JS in D-069, and now
@@ -35,6 +35,10 @@
 // **Similar songs** (api 6) too: the song's own radio — the `next` endpoint
 // with the `RDAMVM<id>` playlist lists what YouTube Music would play after it.
 // Only the song's id goes out; the app's taste never reaches this plugin.
+//
+// **Links** (api 7) open the song at a YouTube Music or YouTube link — a video
+// that isn't on YouTube Music too: its id is a video id either way, and the
+// stream comes the same way. Only song links for now; a playlist's waits.
 
 //
 // ## Two traps, both measured
@@ -608,6 +612,9 @@ function panelRows(node, out) {
   return out;
 }
 
+/** A video's view count where a song's album would stand. */
+const VIEWS = /^[\d.,]+\s*[KMB]?\s+views?$/i;
+
 /** A queue panel row as the contract's track, or `null` when it can't be one. */
 function panelToTrack(panel) {
   const id = panel.videoId;
@@ -616,7 +623,9 @@ function panelToTrack(panel) {
   const artist = groups[0] ?? "";
   if (!id || !title || !artist) return null;
   const track = { id, artist, title, duration_ms: parseDurationMs(runsText(panel.lengthText?.runs)) ?? 0 };
-  if (groups[1] && !/^\d{4}$/.test(groups[1])) track.album = groups[1];
+  // A song's byline names its album; a video's names its views ("444M views")
+  // in the same place — not an album.
+  if (groups[1] && !/^\d{4}$/.test(groups[1]) && !VIEWS.test(groups[1])) track.album = groups[1];
   return track;
 }
 
@@ -715,4 +724,46 @@ export function resolve_source(id) {
     // with 206.
     headers: [{ name: "Range", value: "bytes=0-" }],
   };
+}
+
+// --- links (api 7, headshell D-095) -------------------------------------------------
+//
+// The manifest's templates hand over what stood in `{id}`: a video id, from a
+// YouTube Music, a YouTube or a youtu.be link alike. The song's name comes from
+// the `next` endpoint's queue panel — a video YouTube Music doesn't list as a
+// song gets one too, its title and its channel — and the player endpoint names
+// it when the panel doesn't.
+
+const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
+
+/** The track `next` names for `video`, asked as audio first and then as a video. */
+function nextTrack(video) {
+  for (const isAudioOnly of [true, false]) {
+    const document = innertube(INNERTUBE_NEXT_URL, { videoId: video, isAudioOnly }, "player queue");
+    const panel = panelRows(document, []).find((row) => row.videoId === video);
+    const track = panel ? panelToTrack(panel) : null;
+    if (track) return track;
+  }
+  return null;
+}
+
+/** The track the player endpoint names for `video`, or `null` when it can't be played. */
+function playerTrack(video) {
+  const details = fastPlayer(video, knownVisitor()).videoDetails;
+  if (!details?.title || !details?.author) return null;
+  return {
+    id: video,
+    artist: String(details.author).replace(/ - Topic$/, ""),
+    title: String(details.title),
+    duration_ms: (Number(details.lengthSeconds) || 0) * 1000,
+  };
+}
+
+export function link(id, template) {
+  const video = String(id ?? "").trim();
+  if (!VIDEO_ID.test(video)) {
+    throw new Error(`"${video}" isn't a YouTube video id (eleven letters, digits, - or _) — from ${template}`);
+  }
+  const track = nextTrack(video) ?? playerTrack(video);
+  return track ? [track] : [];
 }

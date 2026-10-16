@@ -1,12 +1,17 @@
 {
   "name": "ytmusic",
   "display_name": "YouTube Music",
-  "version": "0.9.0",
-  "api": 6,
+  "version": "0.10.0",
+  "api": 7,
   "artwork": true,
   "lyrics": true,
   "video": false,
   "related": true,
+  "links": [
+    "https://music.youtube.com/watch?v={id}",
+    "https://www.youtube.com/watch?v={id}",
+    "https://youtu.be/{id}"
+  ],
   "main": "main.js",
   "capabilities": ["search", "stream"],
   "permissions": {
@@ -56,5 +61,5 @@
       }
     }
   ],
-  "description": "Searches YouTube Music (InnerTube) and plays its m4a stream: the address comes from InnerTube's own player endpoint in a fraction of a second (the fast path, headshell D-088), and from yt-dlp when that fails. Gives the song's album art from InnerTube (`yt3`/`lh3.googleusercontent.com`), its lyrics — timed line by line when YouTube Music has the timing — and its radio, the songs like it. The engine installs yt-dlp: it downloads this platform's self-contained binary and verifies its hash (D-069); no Python is needed on the system. If a `cookies` secret is given, it's passed to yt-dlp as a cookie file — YouTube puts up a bot wall for data centre addresses (D-061). NOTE — yt-dlp isn't a script the engine jails but a separate program: its network traffic isn't limited by this plugin's permission list. There's no single-file release for Linux armv7 (`linux-arm`), and none at all for 32-bit Linux."
+  "description": "Searches YouTube Music (InnerTube) and plays its m4a stream: the address comes from InnerTube's own player endpoint in a fraction of a second (the fast path, headshell D-088), and from yt-dlp when that fails. Gives the song's album art from InnerTube (`yt3`/`lh3.googleusercontent.com`), its lyrics — timed line by line when YouTube Music has the timing — its radio, the songs like it, and the song or video at a YouTube Music or YouTube link — one that isn't on YouTube Music too. The engine installs yt-dlp: it downloads this platform's self-contained binary and verifies its hash (D-069); no Python is needed on the system. If a `cookies` secret is given, it's passed to yt-dlp as a cookie file — YouTube puts up a bot wall for data centre addresses (D-061). NOTE — yt-dlp isn't a script the engine jails but a separate program: its network traffic isn't limited by this plugin's permission list. There's no single-file release for Linux armv7 (`linux-arm`), and none at all for 32-bit Linux."
 }

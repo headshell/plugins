@@ -1,4 +1,4 @@
-// The SoundCloud provider plugin (api 6, D-069, D-076, D-078, D-086, D-087, D-091).
+// The SoundCloud provider plugin (api 7, D-069, D-076, D-078, D-086, D-087, D-091, D-095).
 //
 // Phase 2 §2.2's reference plugin; moved from Python to JS in D-069. Its job is
 // not to offer a catalog but to prove that the plugin contract can be written
@@ -19,7 +19,7 @@
 // is still taken first, then the best unencrypted AAC one. An encrypted-only
 // track is refused with its reason — DRM is never opened (D-026).
 
-const VERSION = "0.7.0";
+const VERSION = "0.8.0";
 const HOME_URL = "https://soundcloud.com/";
 const API_BASE = "https://api-v2.soundcloud.com";
 const HEADERS = { "User-Agent": `headshell-soundcloud/${VERSION}` };
@@ -388,4 +388,30 @@ export function artwork(id, size) {
   if (res.status === 404) return null;
   if (!res.ok) throw new StatusError(res.status, url);
   return { mime: res.headers["content-type"] ?? null, data: res.body };
+}
+
+// --- links (api 7, headshell D-095) -------------------------------------------------
+//
+// `https://soundcloud.com/{id}`: what stands in `{id}` is the link's path —
+// `artist/track`, or `artist/track/s-…` for a private one shared with its
+// secret. SoundCloud's own `/resolve` turns the address into what it names.
+// Only a track is played for now: a set (playlist), a profile or a page of the
+// site is refused, saying which.
+
+export function link(id, template) {
+  const path = String(id ?? "").trim().replace(/^\/+|\/+$/g, "");
+  if (path === "") throw new Error(`the link names no track (${template})`);
+  let found;
+  try {
+    found = apiGet("/resolve", { url: `${HOME_URL}${path}` });
+  } catch (err) {
+    // Nothing at the address: an answer, not an error.
+    if (err instanceof StatusError && err.status === 404) return [];
+    throw err;
+  }
+  if (found.kind === "track") return [toTrack(found)];
+  if (found.kind === "playlist") {
+    throw new Error("this is a set's link (a playlist); only a track's link is played for now");
+  }
+  throw new Error(`this link is SoundCloud's ${found.kind ?? "page"}, not a track`);
 }

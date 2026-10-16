@@ -1,16 +1,17 @@
 {
   "name": "soundcloud",
   "display_name": "SoundCloud",
-  "version": "0.7.0",
-  "api": 6,
+  "version": "0.8.0",
+  "api": 7,
   "artwork": true,
   "lyrics": false,
   "video": false,
   "related": true,
+  "links": ["https://soundcloud.com/{id}"],
   "main": "main.js",
   "capabilities": ["search", "stream"],
   "permissions": {
     "net": ["soundcloud.com", "api-v2.soundcloud.com", "*.sndcdn.com", "playback.media-streaming.soundcloud.cloud"]
   },
-  "description": "Searches and plays SoundCloud. Takes the client_id from the secret store, and otherwise discovers it itself. Gives the track's cover and its related tracks. `*.sndcdn.com`: the web client's JS assets (a-v2), the old plain audio stream (cf-media) and the covers (i1) are under this domain; `playback.media-streaming.soundcloud.cloud` is where the HLS streams the app now plays live."
+  "description": "Searches and plays SoundCloud. Takes the client_id from the secret store, and otherwise discovers it itself. Gives the track's cover and its related tracks, and opens the track at a soundcloud.com link (a set's link waits for playlists). `*.sndcdn.com`: the web client's JS assets (a-v2), the old plain audio stream (cf-media) and the covers (i1) are under this domain; `playback.media-streaming.soundcloud.cloud` is where the HLS streams the app now plays live."
 }
